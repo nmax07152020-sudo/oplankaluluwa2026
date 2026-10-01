@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Oplan Kaluluwa 2026 V16 | Antipolo City Health Office</title>
+<title>Oplan Kaluluwa 2026 Antipolo City Health Office</title>
 <style>
 :root{
  --nav:#07386e;--nav2:#05294f;--blue:#0b76df;--blue2:#075eb5;
@@ -1421,20 +1421,39 @@ function updateChatHeaderStatus(){
 
 function openFirebaseChat(uid){
   const target=firebaseUserCache.find(u=>String(u.uid)===String(uid));
-  if(!target || !firebaseChatUser || !firebaseDb) return;
+  if(!target || !firebaseChatUser || !firebaseDb || !firebaseReady) return;
   firebaseSelectedChatUser=target;
-  if(firebaseMessagesRef) firebaseMessagesRef.off();
+  if(firebaseMessagesRef){ try{ firebaseMessagesRef.off(); }catch(e){} }
+
   const chatId=chatIdFor(firebaseChatUser.uid,target.uid);
-  firebaseMessagesRef=firebaseDb.ref(`chats/${chatId}/messages`).orderByChild("timestamp");
+  const messagesRef=firebaseDb.ref(`chats/${chatId}/messages`);
+  firebaseMessagesRef=messagesRef;
+
+  // Listen directly to the message collection, then sort locally.
+  // This avoids query/order issues and also gives us a useful Firebase error callback.
   firebaseMessagesRef.on("value",snap=>{
     const rows=[];
     snap.forEach(ch=>rows.push({id:ch.key,...(ch.val()||{})}));
+    rows.sort((a,b)=>Number(a.timestamp||0)-Number(b.timestamp||0));
     renderFirebaseMessages(rows);
+  },err=>{
+    console.error("Firebase messages read failed",err);
+    const box=$("firebaseChatMessages");
+    if(box) box.innerHTML=`<div class="chat-empty" style="color:#a73535">Unable to read this conversation.<br><small>${esc(err?.message||err||"Firebase permission error")}</small></div>`;
+    const status=$("firebaseChatStatus");
+    if(status) status.innerHTML='<span class="chat-online-dot" style="background:#c93b3b"></span>CHAT ERROR';
   });
+
+  // Verify the listener can actually read the conversation.
+  messagesRef.once("value").catch(err=>{
+    console.error("Firebase conversation probe failed",err);
+  });
+
   firebaseDb.ref(`chats/${chatId}/meta`).update({
     participants:{[firebaseChatUser.uid]:true,[target.uid]:true},
     updatedAt:window.firebase.database.ServerValue.TIMESTAMP
-  }).catch(()=>{});
+  }).catch(err=>console.warn("Chat meta update failed",err));
+
   renderChatUsers();
   const header=$("firebaseChatHeader");
   if(header) header.innerHTML=`<div class="chat-avatar">${esc(chatInitials(target.fullName))}</div><div><h3>${esc(target.fullName||"User")}</h3><small>${esc([target.role,target.unit].filter(Boolean).join(" • ")||"Online")}</small></div>`;
@@ -1474,6 +1493,9 @@ async function sendFirebaseChatMessage(e){
     $("firebaseChatSend").disabled=true;
     await msgRef.set(payload);
     input.value="";
+    // Force an immediate one-time read so a failed write/read is visible during testing.
+    const verify=await msgRef.once("value");
+    if(!verify.exists()) throw new Error("Message was sent but could not be read back from Firebase.");
   }catch(err){alert("Unable to send message: "+(err.message||err));}
   finally{$("firebaseChatSend").disabled=false;input.focus();}
 }
