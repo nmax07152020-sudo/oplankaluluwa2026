@@ -112,6 +112,121 @@ button{cursor:pointer}
 @media(max-width:900px){.chat-layout{grid-template-columns:1fr}.chat-users{max-height:260px}.chat-messages{max-height:none;min-height:340px}}
 </style>
 
+
+<style id="v29-header-fix">
+/* V29 — Restore the approved mobile public-header layout from V21/V22 */
+.public-header{
+  padding:10px 18px;
+  gap:12px;
+  align-items:center;
+}
+.brand-inline{
+  flex:1 1 auto;
+  min-width:0;
+  align-items:center;
+}
+.brand-inline > div{
+  min-width:0;
+}
+.brand-inline b{
+  font-size:13px;
+  line-height:1.15;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.brand-inline small{
+  font-size:9px;
+  line-height:1.25;
+}
+.public-header-actions{
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:7px;
+}
+.public-header-actions .btn{
+  min-height:38px;
+  white-space:nowrap;
+}
+.public-header-actions > a.btn.primary{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  line-height:1.15;
+  gap:6px;
+}
+@media(max-width:700px){
+  .public-header{
+    flex-direction:column;
+    align-items:stretch;
+    padding:10px 12px 9px;
+    gap:8px;
+  }
+  .brand-inline{
+    width:100%;
+    display:flex;
+    align-items:center;
+    gap:9px;
+  }
+  .brand-inline img{
+    width:46px;
+    height:46px;
+    flex:0 0 46px;
+  }
+  .brand-inline b{font-size:12px}
+  .brand-inline small{
+    display:block;
+    font-size:8.5px;
+    line-height:1.25;
+  }
+  .public-header-actions{
+    width:100%;
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    gap:6px;
+  }
+  .public-header-actions .btn{
+    width:100%;
+    min-width:0;
+    justify-content:center;
+    text-align:center;
+    padding:8px 8px;
+    font-size:10px;
+    min-height:40px;
+  }
+  .public-header-actions > a.btn.primary{
+    width:100%;
+    min-width:0;
+    justify-content:center;
+    text-align:center;
+  }
+  .public-header-actions .ios-guide{
+    grid-column:1 / -1;
+    order:3;
+  }
+}
+@media(max-width:380px){
+  .brand-inline img{
+    width:42px;
+    height:42px;
+    flex-basis:42px;
+  }
+  .brand-inline b{font-size:11px}
+  .brand-inline small{font-size:8px}
+  .public-header-actions .btn{
+    font-size:9px;
+    padding:7px 6px;
+  }
+  .public-header-actions > a.btn.primary{
+    padding-left:5px;
+    padding-right:5px;
+    gap:5px;
+  }
+}
+</style>
 </head>
 <body>
 
