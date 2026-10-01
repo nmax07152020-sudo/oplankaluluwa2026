@@ -568,9 +568,22 @@ function renderAdminDashboard(){
 }
 
 async function adminOpenUnit(index){
+  if(!adminData || !adminData.units || !adminData.units[index]) return;
   const unit=adminData.units[index]["Cemetery / Post"];
-  currentUnitData=await apiGet("unitData",{token,unit});
-  navigate("unit");
+  try{
+    currentUnitData=await apiGet("unitData",{token,unit});
+    currentPage="unit";
+    document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+    $("unitPage").classList.add("active");
+    document.querySelectorAll("#privateNav button").forEach(b=>b.classList.toggle("active",b.dataset.page==="unit"));
+    $("pageTitle").textContent="Unit Details";
+    $("pageSub").textContent="Personnel, duty and reports for the selected deployment unit";
+    $("sidebar").classList.remove("open");
+    renderAdminUnitDetail();
+    window.scrollTo({top:0,behavior:"smooth"});
+  }catch(e){
+    alert("Unable to open unit: "+(e.message||e));
+  }
 }
 
 function renderAllUnits(){
@@ -597,6 +610,37 @@ function renderLeaderDashboard(){
     <div class="card"><div class="section-head"><div><h2>Report Summary</h2><p>Counts for your locked unit.</p></div></div><div class="mini-cards">
       <div class="mini"><span>Vital Signs</span><b>${t["Vital Signs"]||0}</b></div><div class="mini"><span>Medicine</span><b>${t["Medicine Request"]||0}</b></div><div class="mini"><span>First Aid</span><b>${t["First Aid"]||0}</b></div><div class="mini"><span>Medical Assistance</span><b>${t["Medical Assistance"]||0}</b></div>
     </div></div>`;
+}
+
+function renderAdminUnitDetail(){
+  if(!currentUnitData || !currentUnitData.unit) return;
+  const u=currentUnitData.unit;
+  const t=currentUnitData.reportTotals || {};
+  const backBtn='<button type="button" class="btn" onclick="navigate(&quot;unit&quot;)">← All Deployment Units</button>';
+  $("unitPage").innerHTML=`
+    <div class="section-head">
+      <div><div class="u-group">Deployment Unit ${esc(u.group||"")}</div><h2>${esc(u.name||"")}</h2><p>${esc((u.covered||[]).join(" • "))}</p></div>
+      <div>${backBtn}</div>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="kpi-icon">👥</div><div><label>Personnel On Duty</label><strong>${new Set((currentUnitData.duty||[]).map(x=>x["Personnel Name"]).filter(Boolean)).size}</strong><small>This unit</small></div></div>
+      <div class="kpi"><div class="kpi-icon">📋</div><div><label>Total Reports</label><strong>${t.totalReports||0}</strong><small>This unit</small></div></div>
+      <div class="kpi"><div class="kpi-icon">🩺</div><div><label>Persons Assisted</label><strong>${t.totalPersons||0}</strong><small>This unit</small></div></div>
+      <div class="kpi"><div class="kpi-icon">👤</div><div><label>Team Leader</label><strong style="font-size:15px">${esc(u.teamLeader||"To be assigned")}</strong><small>Assigned unit leader</small></div></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <div class="section-head"><div><h2>Duty Schedule</h2><p>Personnel assignments for this unit.</p></div></div>
+      ${renderDutyTable(currentUnitData.duty||[])}
+    </div>
+    <div class="card" style="margin-top:14px">
+      <div class="section-head"><div><h2>Report Summary</h2><p>Current reporting totals for this unit.</p></div></div>
+      <div class="mini-cards">
+        <div class="mini"><span>Vital Signs</span><b>${t["Vital Signs"]||0}</b></div>
+        <div class="mini"><span>Medicine</span><b>${t["Medicine Request"]||0}</b></div>
+        <div class="mini"><span>First Aid</span><b>${t["First Aid"]||0}</b></div>
+        <div class="mini"><span>Medical Assistance</span><b>${t["Medical Assistance"]||0}</b></div>
+      </div>
+    </div>`;
 }
 
 function renderLeaderUnit(){
