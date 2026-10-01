@@ -1248,8 +1248,8 @@ const FIREBASE_CONFIG = {
   storageBucket: "oplan-kaluluwa2026.firebasestorage.app",
   messagingSenderId: "634960827713",
   appId: "1:634960827713:web:b6a09f8478d02c72b4bdc0",
-  // Explicit RTDB endpoint. The code below also tries the regional endpoint.
-  databaseURL: "https://oplan-kaluluwa2026-default-rtdb.firebaseio.com"
+  // Actual RTDB endpoint in asia-southeast1, matching Firebase Console.
+  databaseURL: "https://oplan-kaluluwa2026-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
 
 let firebaseApp=null;
@@ -1275,29 +1275,32 @@ async function initFirebaseChat(){
     const cred=await firebaseAuth.signInAnonymously();
     firebaseChatUser=cred.user;
 
-    // Try the legacy default endpoint first, then the modern regional endpoint.
-    const rtdbUrls=[
-      "https://oplan-kaluluwa2026-default-rtdb.firebaseio.com",
-      "https://oplan-kaluluwa2026-default-rtdb.asia-southeast1.firebasedatabase.app"
-    ];
-    let lastError=null;
-    for(const url of rtdbUrls){
-      try{
-        const db=window.firebase.database(firebaseApp,url);
-        const probe=db.ref(".info/connected");
-        await Promise.race([
-          probe.once("value"),
-          new Promise((_,reject)=>setTimeout(()=>reject(new Error("RTDB connection timeout")),7000))
-        ]);
-        firebaseDb=db;
-        break;
-      }catch(err){
-        lastError=err;
-      }
-    }
-    if(!firebaseDb){
-      throw new Error("Realtime Database connection failed. Check the Firebase Database URL. "+(lastError?.message||""));
-    }
+    // Use the actual Firebase Realtime Database region shown by Firebase Console.
+    const dbUrl="https://oplan-kaluluwa2026-default-rtdb.asia-southeast1.firebasedatabase.app";
+    firebaseDb=window.firebase.database(firebaseApp,dbUrl);
+
+    // Do not mark Firebase ready until the RTDB socket is genuinely connected.
+    const probe=firebaseDb.ref(".info/connected");
+    await new Promise((resolve,reject)=>{
+      let done=false;
+      const finishOk=()=>{
+        if(done)return;
+        done=true;
+        probe.off("value",onConn);
+        resolve();
+      };
+      const finishErr=(err)=>{
+        if(done)return;
+        done=true;
+        probe.off("value",onConn);
+        reject(err);
+      };
+      const onConn=snap=>{
+        if(snap.val()===true) finishOk();
+      };
+      probe.on("value",onConn);
+      setTimeout(()=>finishErr(new Error("RTDB connection timeout after 15 seconds.")),15000);
+    });
 
     const me={
       uid:firebaseChatUser.uid,
