@@ -177,6 +177,34 @@ button{cursor:pointer}
 }
 </style>
 
+
+<style id="v22-download-button-center">
+/* V22 — Center Download App text/icon on mobile */
+.public-header-actions > a.btn.primary{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  line-height:1.15;
+  gap:6px;
+}
+@media(max-width:700px){
+  .public-header-actions > a.btn.primary{
+    width:100%;
+    min-width:0;
+    justify-content:center;
+    text-align:center;
+  }
+}
+@media(max-width:380px){
+  .public-header-actions > a.btn.primary{
+    padding-left:5px;
+    padding-right:5px;
+    gap:5px;
+  }
+}
+</style>
+
 </head>
 <body>
 
