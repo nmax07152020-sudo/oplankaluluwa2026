@@ -73,7 +73,7 @@ button{cursor:pointer}
       <h1>OPLAN KALULUWA YEAR 2026</h1>
       <h2>Antipolo City Health Office • Public Operations Dashboard</h2>
       <div class="public-date">OCTOBER 31, 2026 - NOVEMBER 2, 2026</div>
-      <div id="publicConnection" style="margin-top:10px;font-size:9px;font-weight:800;color:#cde9ff">● Loading live dashboard…</div>
+      <div id="publicConnection" style="margin-top:10px;font-size:9px;font-weight:800;color:#cde9ff">● Connecting…</div>
     </div>
 
     <div class="kpis">
@@ -358,7 +358,7 @@ async function loadPublicDashboard(){
     $("publicPersonnel").textContent=d.totalPersonnel;
     $("publicReports").textContent=d.totalReports;
     $("publicPersons").textContent=d.totalPersons;
-    $("publicConnection").textContent="● GOOGLE SHEETS LIVE";
+    $("publicConnection").textContent="● SYSTEM ONLINE";
     $("publicConnection").style.color="#c5ffd9";
     $("publicUnitGrid").innerHTML=d.units.map((u,i)=>`
       <div class="unit-card">
