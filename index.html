@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Oplan Kaluluwa 2026 Antipolo City Health Office</title>
+<title>Oplan Kaluluwa 2026 V16 | Antipolo City Health Office</title>
 <style>
 :root{
  --nav:#07386e;--nav2:#05294f;--blue:#0b76df;--blue2:#075eb5;
@@ -1262,6 +1262,8 @@ let firebaseMessagesRef=null;
 let firebaseSelectedChatUser=null;
 let firebaseReady=false;
 let firebaseUserCache=[];
+let firebaseStableChatKey="";
+let firebaseMessageCache=new Map();
 
 async function initFirebaseChat(){
   try{
@@ -1302,9 +1304,15 @@ async function initFirebaseChat(){
       setTimeout(()=>finishErr(new Error("RTDB connection timeout after 15 seconds.")),15000);
     });
 
+    // Stable account identity for conversations. Firebase anonymous UID changes on a new session,
+    // so chat history must NOT depend on that temporary UID.
+    firebaseStableChatKey = getStableChatKey(currentUser);
+
     const me={
       uid:firebaseChatUser.uid,
+      chatKey:firebaseStableChatKey,
       fullName:currentUser?.fullName || currentUser?.username || "User",
+      username:currentUser?.username || "",
       role:currentUser?.role || "",
       unit:currentUser?.unit || "All deployment units",
       online:true,
@@ -1350,11 +1358,21 @@ function cleanupFirebaseChat(){
   firebaseChatUser=null;
   firebaseSelectedChatUser=null;
   firebaseUserCache=[];
+  firebaseMessageCache=new Map();
+  firebaseStableChatKey="";
   firebaseReady=false;
 }
 
 function chatInitials(name){
   return String(name||"User").trim().split(/\s+/).slice(0,2).map(x=>x[0]||"").join("").toUpperCase()||"U";
+}
+function getStableChatKey(user){
+  if(!user) return "user";
+  const role=String(user.role||"USER").trim().toUpperCase();
+  const identity=role==="ADMIN"
+    ? String(user.username||user.fullName||"admin").trim()
+    : String(user.unit||user.username||user.fullName||"teamleader").trim();
+  return encodeURIComponent(role+"::"+identity);
 }
 function chatIdFor(a,b){return [String(a||""),String(b||"")].sort().join("__");}
 
@@ -1425,18 +1443,20 @@ function openFirebaseChat(uid){
   firebaseSelectedChatUser=target;
   if(firebaseMessagesRef){ try{ firebaseMessagesRef.off(); }catch(e){} }
 
-  const chatId=chatIdFor(firebaseChatUser.uid,target.uid);
+  const myChatKey=firebaseStableChatKey||getStableChatKey(currentUser);
+  const targetChatKey=target.chatKey||getStableChatKey(target);
+  const chatId=chatIdFor(myChatKey,targetChatKey);
   const messagesRef=firebaseDb.ref(`chats/${chatId}/messages`);
   firebaseMessagesRef=messagesRef;
 
-  // Listen directly to the message collection, then sort locally.
-  // This avoids query/order issues and also gives us a useful Firebase error callback.
-  firebaseMessagesRef.on("value",snap=>{
-    const rows=[];
-    snap.forEach(ch=>rows.push({id:ch.key,...(ch.val()||{})}));
-    rows.sort((a,b)=>Number(a.timestamp||0)-Number(b.timestamp||0));
-    renderFirebaseMessages(rows);
-  },err=>{
+  // Load the complete conversation once, then append every new message incrementally.
+  // This prevents one incoming message from replacing the visible conversation.
+  firebaseMessageCache=new Map();
+  messagesRef.once("value").then(snap=>{
+    snap.forEach(ch=>firebaseMessageCache.set(ch.key,{id:ch.key,...(ch.val()||{})}));
+    renderFirebaseMessages(Array.from(firebaseMessageCache.values()));
+    boxScrollToBottom();
+  }).catch(err=>{
     console.error("Firebase messages read failed",err);
     const box=$("firebaseChatMessages");
     if(box) box.innerHTML=`<div class="chat-empty" style="color:#a73535">Unable to read this conversation.<br><small>${esc(err?.message||err||"Firebase permission error")}</small></div>`;
@@ -1444,14 +1464,30 @@ function openFirebaseChat(uid){
     if(status) status.innerHTML='<span class="chat-online-dot" style="background:#c93b3b"></span>CHAT ERROR';
   });
 
-  // Verify the listener can actually read the conversation.
-  messagesRef.once("value").catch(err=>{
-    console.error("Firebase conversation probe failed",err);
-  });
+  const onAdded=snap=>{
+    firebaseMessageCache.set(snap.key,{id:snap.key,...(snap.val()||{})});
+    renderFirebaseMessages(Array.from(firebaseMessageCache.values()));
+    boxScrollToBottom();
+  };
+  const onChanged=snap=>{
+    firebaseMessageCache.set(snap.key,{id:snap.key,...(snap.val()||{})});
+    renderFirebaseMessages(Array.from(firebaseMessageCache.values()));
+  };
+  const onRemoved=snap=>{
+    firebaseMessageCache.delete(snap.key);
+    renderFirebaseMessages(Array.from(firebaseMessageCache.values()));
+  };
+  firebaseMessagesRef.on("child_added",onAdded,err=>console.error("Firebase child_added failed",err));
+  firebaseMessagesRef.on("child_changed",onChanged,err=>console.error("Firebase child_changed failed",err));
+  firebaseMessagesRef.on("child_removed",onRemoved,err=>console.error("Firebase child_removed failed",err));
 
   firebaseDb.ref(`chats/${chatId}/meta`).update({
-    participants:{[firebaseChatUser.uid]:true,[target.uid]:true},
-    updatedAt:window.firebase.database.ServerValue.TIMESTAMP
+    participants:{[myChatKey]:true,[targetChatKey]:true},
+    updatedAt:window.firebase.database.ServerValue.TIMESTAMP,
+    participantNames:{
+      [myChatKey]:currentUser?.fullName||currentUser?.username||"User",
+      [targetChatKey]:target?.fullName||"User"
+    }
   }).catch(err=>console.warn("Chat meta update failed",err));
 
   renderChatUsers();
@@ -1466,12 +1502,20 @@ function renderFirebaseMessages(rows){
   const box=$("firebaseChatMessages");
   if(!box) return;
   if(!rows.length){box.innerHTML='<div class="chat-empty">No messages yet. Start the conversation.</div>';return;}
+  rows.sort((a,b)=>{
+    const ta=Number(a.timestamp||0), tb=Number(b.timestamp||0);
+    return ta===tb ? String(a.id||"").localeCompare(String(b.id||"")) : ta-tb;
+  });
   box.innerHTML=rows.map(m=>{
-    const mine=String(m.senderUid||"")===String(firebaseChatUser?.uid||"");
+    const mine=String(m.senderUid||"")===String(firebaseChatUser?.uid||"") || String(m.senderChatKey||"")===String(firebaseStableChatKey||"");
     const when=m.timestamp?new Date(Number(m.timestamp)).toLocaleString([], {month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}):"Sending...";
     return `<div class="chat-bubble-row${mine?' mine':''}"><div class="chat-bubble"><div class="chat-text">${esc(m.text||"")}</div><div class="chat-time">${mine?'You':esc(m.senderName||"User")} • ${esc(when)}</div></div></div>`;
   }).join("");
   box.scrollTop=box.scrollHeight;
+}
+function boxScrollToBottom(){
+  const box=$("firebaseChatMessages");
+  if(box) requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight;});
 }
 
 async function sendFirebaseChatMessage(e){
@@ -1479,10 +1523,14 @@ async function sendFirebaseChatMessage(e){
   const input=$("firebaseChatInput");
   const text=String(input?.value||"").trim();
   if(!text || !firebaseReady || !firebaseChatUser || !firebaseSelectedChatUser || !firebaseDb) return;
-  const chatId=chatIdFor(firebaseChatUser.uid,firebaseSelectedChatUser.uid);
+  const myChatKey=firebaseStableChatKey||getStableChatKey(currentUser);
+  const targetChatKey=firebaseSelectedChatUser.chatKey||getStableChatKey(firebaseSelectedChatUser);
+  const chatId=chatIdFor(myChatKey,targetChatKey);
   const msgRef=firebaseDb.ref(`chats/${chatId}/messages`).push();
   const payload={
     senderUid:firebaseChatUser.uid,
+    senderChatKey:myChatKey,
+    recipientChatKey:targetChatKey,
     senderName:currentUser?.fullName||currentUser?.username||"User",
     senderRole:currentUser?.role||"",
     senderUnit:currentUser?.unit||"",
