@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Oplan Kaluluwa 2026 Antipolo City Health Office</title>
+<title>Oplan Kaluluwa 2026 V16 | Antipolo City Health Office</title>
 <style>
 :root{
  --nav:#07386e;--nav2:#05294f;--blue:#0b76df;--blue2:#075eb5;
@@ -76,133 +76,33 @@ button{cursor:pointer}
 <link rel="apple-touch-icon" href="/oplankaluluwa-web-favicon.png?v=3">
 
 
-<style id="v21-header-fix">
-/* V21 — Public header responsive fix */
-.public-header{
-  padding:10px 18px;
-  gap:12px;
-  align-items:center;
-}
-.brand-inline{
-  flex:1 1 auto;
-  min-width:0;
-  align-items:center;
-}
-.brand-inline > div{
-  min-width:0;
-}
-.brand-inline b{
-  font-size:13px;
-  line-height:1.15;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-}
-.brand-inline small{
-  font-size:9px;
-  line-height:1.25;
-}
-.public-header-actions{
-  flex:0 0 auto;
-  display:flex;
-  align-items:center;
-  justify-content:flex-end;
-  gap:7px;
-}
-.public-header-actions .btn{
-  min-height:38px;
-  white-space:nowrap;
-}
-@media(max-width:700px){
-  .public-header{
-    flex-direction:column;
-    align-items:stretch;
-    padding:10px 12px 9px;
-    gap:8px;
-  }
-  .brand-inline{
-    width:100%;
-    display:flex;
-    align-items:center;
-    gap:9px;
-  }
-  .brand-inline img{
-    width:46px;
-    height:46px;
-    flex:0 0 46px;
-  }
-  .brand-inline b{
-    font-size:12px;
-  }
-  .brand-inline small{
-    display:block;
-    font-size:8.5px;
-    line-height:1.25;
-  }
-  .public-header-actions{
-    width:100%;
-    display:grid;
-    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
-    gap:6px;
-  }
-  .public-header-actions .btn{
-    width:100%;
-    min-width:0;
-    justify-content:center;
-    padding:8px 8px;
-    font-size:10px;
-    min-height:40px;
-  }
-  .public-header-actions .ios-guide{
-    grid-column:1 / -1;
-    order:3;
-  }
-}
-@media(max-width:380px){
-  .brand-inline img{
-    width:42px;
-    height:42px;
-    flex-basis:42px;
-  }
-  .brand-inline b{
-    font-size:11px;
-  }
-  .brand-inline small{
-    font-size:8px;
-  }
-  .public-header-actions .btn{
-    font-size:9px;
-    padding:7px 6px;
-  }
-}
-</style>
+<!-- Firebase Live Chat SDKs -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 
 
-<style id="v22-download-button-center">
-/* V22 — Center Download App text/icon on mobile */
-.public-header-actions > a.btn.primary{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  text-align:center;
-  line-height:1.15;
-  gap:6px;
-}
-@media(max-width:700px){
-  .public-header-actions > a.btn.primary{
-    width:100%;
-    min-width:0;
-    justify-content:center;
-    text-align:center;
-  }
-}
-@media(max-width:380px){
-  .public-header-actions > a.btn.primary{
-    padding-left:5px;
-    padding-right:5px;
-    gap:5px;
-  }
-}
+<style id="firebase-live-chat-css">
+.chat-layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:14px;min-height:520px}
+.chat-users{display:grid;gap:8px;align-content:start;max-height:520px;overflow:auto}
+.chat-user-btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:11px;text-align:left;display:flex;align-items:center;gap:10px;transition:.15s}
+.chat-user-btn:hover{background:#f5f9ff;border-color:#cfe1f3}
+.chat-user-btn.active{background:#eaf4ff;border-color:#a9cff4}
+.chat-avatar{width:36px;height:36px;border-radius:11px;background:#e4f2ff;color:#0b66bf;display:grid;place-items:center;font-size:11px;font-weight:900;flex:0 0 36px}
+.chat-user-name{font-size:11px;font-weight:900;color:var(--text);line-height:1.25}
+.chat-user-sub{display:block;color:var(--muted);font-size:8px;margin-top:2px}
+.chat-online-dot{width:8px;height:8px;border-radius:50%;background:#0aa66a;box-shadow:0 0 0 3px rgba(10,166,106,.1);margin-left:auto;flex:0 0 8px}
+.chat-panel{display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.chat-head{display:flex;align-items:center;gap:10px;padding:12px;border-bottom:1px solid var(--line);background:#f8fbff}
+.chat-head h3{margin:0;font-size:14px}.chat-head small{display:block;color:var(--muted);font-size:8px;margin-top:2px}
+.chat-messages{flex:1;min-height:360px;max-height:440px;overflow:auto;padding:16px;background:linear-gradient(180deg,#f8fbff,#f3f7fb)}
+.chat-empty{height:100%;min-height:300px;display:grid;place-items:center;text-align:center;color:var(--muted);font-size:10px;padding:25px}
+.chat-bubble-row{display:flex;margin-bottom:9px}.chat-bubble-row.mine{justify-content:flex-end}.chat-bubble{max-width:min(78%,520px);padding:9px 11px;border-radius:13px;background:#fff;border:1px solid var(--line);box-shadow:0 4px 12px rgba(16,49,88,.05)}
+.chat-bubble-row.mine .chat-bubble{background:#0b76df;border-color:#0b76df;color:#fff;border-bottom-right-radius:5px}.chat-bubble-row:not(.mine) .chat-bubble{border-bottom-left-radius:5px}
+.chat-text{font-size:10px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}.chat-time{font-size:7px;color:var(--muted);margin-top:4px}.chat-bubble-row.mine .chat-time{color:#d9ecff;text-align:right}
+.chat-compose{display:grid;grid-template-columns:1fr auto;gap:8px;padding:11px;border-top:1px solid var(--line);background:#fff}.chat-compose textarea{min-height:42px;max-height:100px;resize:none}.chat-note{background:#f0f7ff;border:1px solid #cfe3f8;color:#426683;border-radius:10px;padding:9px;font-size:8px;line-height:1.45;margin-bottom:10px}
+.chat-status{display:inline-flex;align-items:center;gap:6px;padding:6px 8px;border-radius:999px;background:#e9f8f0;color:#087d50;font-size:8px;font-weight:900}
+@media(max-width:900px){.chat-layout{grid-template-columns:1fr}.chat-users{max-height:220px}.chat-messages{max-height:none;min-height:340px}}
 </style>
 
 </head>
@@ -278,6 +178,7 @@ button{cursor:pointer}
       <section id="usersPage" class="page"></section>
       <section id="adminReportsPage" class="page"></section>
       <section id="driverDutyPage" class="page"></section>
+      <section id="chatPage" class="page"></section>
       <div class="footer-note private-footer">© 2026 • Developed &amp; Maintained by Erwin R. Alincastre</div>
     </div>
   </main>
@@ -636,6 +537,7 @@ $("loginForm").addEventListener("submit",async e=>{
     showPrivateApp();
     await loadRoleData();
     navigate("dashboard");
+    await initFirebaseChat();
   }catch(err){
     msg.textContent=err.message;
     msg.classList.add("show");
@@ -658,6 +560,7 @@ function showPrivateApp(){
 }
 
 function hidePrivateApp(){
+  cleanupFirebaseChat();
   $("privateView").classList.add("hidden");
   $("publicView").classList.remove("hidden");
   currentUser=null;token="";adminData=null;currentUnitData=null;
@@ -670,6 +573,7 @@ function buildPrivateNav(){
     ["unit","⛪",currentUser.role==="TEAM_LEADER"?"My Unit":"All Units"],
     ["duty","🕐","Duty Schedule"],
     ["driverDuty","🚑","Driver On Duty"],
+    ["chat","💬","Live Chat"],
     ["report","📝","Submit Report"]
   ];
   let items=[...common];
@@ -700,7 +604,7 @@ async function loadRoleData(){
 function navigate(page){
   currentPage=page;
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
-  const id={dashboard:"privateDashboard",unit:"unitPage",duty:"dutyPage",driverDuty:"driverDutyPage",report:"reportPage",personnel:"personnelPage",users:"usersPage",adminReports:"adminReportsPage"}[page];
+  const id={dashboard:"privateDashboard",unit:"unitPage",duty:"dutyPage",driverDuty:"driverDutyPage",chat:"chatPage",report:"reportPage",personnel:"personnelPage",users:"usersPage",adminReports:"adminReportsPage"}[page];
   if(id) $(id).classList.add("active");
   document.querySelectorAll("#privateNav button").forEach(b=>b.classList.toggle("active",b.dataset.page===page));
   const titles={
@@ -708,6 +612,7 @@ function navigate(page){
     unit:[currentUser.role==="ADMIN"?"All Units":"My Unit","Cemetery / deployment unit details"],
     duty:["Duty Schedule","Standby medic assignments"],
     driverDuty:["Driver On Duty","Central / roving ambulance driver roster"],
+    chat:["Live Chat","Real-time coordination for authorized users"],
     report:["Submit Report","Team Leader / authorized reporting"],
     personnel:["Personnel / Duty","Admin management of staff assignments"],
     users:["User Access","Admin management of Team Leader accounts"],
@@ -719,6 +624,7 @@ function navigate(page){
   if(page==="unit") currentUser.role==="ADMIN" ? renderAllUnits() : renderLeaderUnit();
   if(page==="duty") renderDutyPage();
   if(page==="driverDuty") renderDriverDutyPage();
+  if(page==="chat") renderChatPage();
   if(page==="report") renderReportPage();
   if(page==="personnel") renderPersonnelPage();
   if(page==="users") renderUsersPage();
@@ -1328,6 +1234,245 @@ function filterAdminReports(){
   let rows=adminData.reports||[];const u=$("reportUnitFilter").value,t=$("reportTypeFilter").value;
   if(u)rows=rows.filter(r=>r.cemetery===u);if(t)rows=rows.filter(r=>r.type===t);
   $("adminReportTable").innerHTML=rows.length?`<div class="table-wrap"><table><thead><tr><th>Date/Time</th><th>Unit</th><th>Reporter</th><th>Type</th><th>Patient/Count</th><th>Status</th><th>Details</th></tr></thead><tbody>${rows.slice().reverse().map(r=>`<tr><td>${esc(r.reportDate)}<br>${esc(r.reportTime)}</td><td>${esc(r.cemetery)}</td><td>${esc(r.reporter)}</td><td>${esc(r.type)}</td><td>${esc(r.patientId||"-")} / ${r.count}</td><td>${esc(r.status)}</td><td>${esc(r.details)}</td></tr>`).join("")}</tbody></table></div>`:'<div style="padding:25px;text-align:center;color:var(--muted);font-size:10px">No reports found.</div>';
+}
+
+/* =========================================================
+   Firebase Live Chat (Admin + Team Leader)
+   Existing Apps Script login remains the authority for app access.
+   Firebase Anonymous Auth supplies the chat-only realtime identity.
+   ========================================================= */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyA_bbMoOWyiwNqrFbtHwVwb320zmMDL-ss",
+  authDomain: "oplan-kaluluwa2026.firebaseapp.com",
+  projectId: "oplan-kaluluwa2026",
+  storageBucket: "oplan-kaluluwa2026.firebasestorage.app",
+  messagingSenderId: "634960827713",
+  appId: "1:634960827713:web:b6a09f8478d02c72b4bdc0",
+  // Explicit RTDB endpoint. The code below also tries the regional endpoint.
+  databaseURL: "https://oplan-kaluluwa2026-default-rtdb.firebaseio.com"
+};
+
+let firebaseApp=null;
+let firebaseAuth=null;
+let firebaseDb=null;
+let firebaseChatUser=null;
+let firebaseOnlineRef=null;
+let firebaseUsersRef=null;
+let firebaseMessagesRef=null;
+let firebaseSelectedChatUser=null;
+let firebaseReady=false;
+let firebaseUserCache=[];
+
+async function initFirebaseChat(){
+  try{
+    if(!window.firebase) throw new Error("Firebase SDK failed to load.");
+    if(!firebaseApp) firebaseApp=window.firebase.initializeApp(FIREBASE_CONFIG);
+    firebaseAuth=window.firebase.auth();
+
+    // Chat identity is separate from the existing Apps Script login.
+    await firebaseAuth.setPersistence(window.firebase.auth.Auth.Persistence.NONE);
+    if(firebaseAuth.currentUser) await firebaseAuth.signOut();
+    const cred=await firebaseAuth.signInAnonymously();
+    firebaseChatUser=cred.user;
+
+    // Try the legacy default endpoint first, then the modern regional endpoint.
+    const rtdbUrls=[
+      "https://oplan-kaluluwa2026-default-rtdb.firebaseio.com",
+      "https://oplan-kaluluwa2026-default-rtdb.asia-southeast1.firebasedatabase.app"
+    ];
+    let lastError=null;
+    for(const url of rtdbUrls){
+      try{
+        const db=window.firebase.database(firebaseApp,url);
+        const probe=db.ref(".info/connected");
+        await Promise.race([
+          probe.once("value"),
+          new Promise((_,reject)=>setTimeout(()=>reject(new Error("RTDB connection timeout")),7000))
+        ]);
+        firebaseDb=db;
+        break;
+      }catch(err){
+        lastError=err;
+      }
+    }
+    if(!firebaseDb){
+      throw new Error("Realtime Database connection failed. Check the Firebase Database URL. "+(lastError?.message||""));
+    }
+
+    const me={
+      uid:firebaseChatUser.uid,
+      fullName:currentUser?.fullName || currentUser?.username || "User",
+      role:currentUser?.role || "",
+      unit:currentUser?.unit || "All deployment units",
+      online:true,
+      lastSeen:window.firebase.database.ServerValue.TIMESTAMP
+    };
+    firebaseOnlineRef=firebaseDb.ref("onlineUsers/"+firebaseChatUser.uid);
+    await firebaseOnlineRef.set(me);
+    await firebaseOnlineRef.onDisconnect().remove();
+
+    firebaseUsersRef=firebaseDb.ref("onlineUsers");
+    firebaseUsersRef.on("value",snap=>{
+      firebaseUserCache=[];
+      snap.forEach(ch=>{
+        const v=ch.val()||{};
+        if(v.uid && v.uid!==firebaseChatUser?.uid) firebaseUserCache.push(v);
+      });
+      renderChatUsers();
+      updateChatHeaderStatus();
+    });
+    firebaseReady=true;
+    updateChatHeaderStatus();
+    if($("chatPage")?.classList.contains("active")) renderChatPage();
+  }catch(e){
+    firebaseReady=false;
+    console.error("Firebase chat init failed",e);
+    updateChatHeaderStatus();
+    if($("chatPage")){
+      $("chatPage").innerHTML=`<div class="card"><div class="notice"><b>Firebase Live Chat connection failed.</b><br>${esc(e.message||e)}<br><small>Authentication may be enabled, but the Realtime Database endpoint or rules may still need verification.</small></div></div>`;
+    }
+  }
+}
+
+function cleanupFirebaseChat(){
+  try{
+    if(firebaseMessagesRef) firebaseMessagesRef.off();
+    if(firebaseUsersRef) firebaseUsersRef.off();
+    if(firebaseOnlineRef) firebaseOnlineRef.remove().catch(()=>{});
+    if(firebaseAuth?.currentUser) firebaseAuth.signOut().catch(()=>{});
+  }catch(e){}
+  firebaseMessagesRef=null;
+  firebaseUsersRef=null;
+  firebaseOnlineRef=null;
+  firebaseChatUser=null;
+  firebaseSelectedChatUser=null;
+  firebaseUserCache=[];
+  firebaseReady=false;
+}
+
+function chatInitials(name){
+  return String(name||"User").trim().split(/\s+/).slice(0,2).map(x=>x[0]||"").join("").toUpperCase()||"U";
+}
+function chatIdFor(a,b){return [String(a||""),String(b||"")].sort().join("__");}
+
+function renderChatPage(){
+  if(!currentUser) return;
+  $("chatPage").innerHTML=`
+    <div class="section-head">
+      <div><h2>💬 Live Chat</h2><p>Real-time coordination for logged-in Admin and Team Leaders.</p></div>
+      <span id="firebaseChatStatus" class="chat-status"><span class="chat-online-dot"></span>Connecting</span>
+    </div>
+    <div class="chat-note"><b>Operational chat:</b> Please do not send patient-identifying or other sensitive medical information here.</div>
+    <div class="chat-layout">
+      <div class="card">
+        <div class="section-head" style="align-items:center"><div><h2 style="font-size:14px">Online Users</h2><p>Only currently logged-in users are listed.</p></div></div>
+        <div id="firebaseChatUsers" class="chat-users"></div>
+      </div>
+      <div class="card chat-panel">
+        <div id="firebaseChatHeader" class="chat-head">
+          <div class="chat-avatar">💬</div>
+          <div><h3>Select a user</h3><small>Messages appear here in real time.</small></div>
+        </div>
+        <div id="firebaseChatMessages" class="chat-messages"><div class="chat-empty">Choose an online Admin or Team Leader to start chatting.</div></div>
+        <form id="firebaseChatCompose" class="chat-compose">
+          <textarea id="firebaseChatInput" maxlength="2000" placeholder="Type a message..." disabled></textarea>
+          <button type="submit" class="btn primary" id="firebaseChatSend" disabled>Send</button>
+        </form>
+      </div>
+    </div>`;
+  $("firebaseChatCompose").addEventListener("submit",sendFirebaseChatMessage);
+  $("firebaseChatInput").addEventListener("keydown",e=>{
+    if(e.key==="Enter" && !e.shiftKey){e.preventDefault();$("firebaseChatCompose").requestSubmit();}
+  });
+  renderChatUsers();
+  updateChatHeaderStatus();
+}
+
+function renderChatUsers(){
+  if(!$('firebaseChatUsers')) return;
+  if(!firebaseReady){
+    $('firebaseChatUsers').innerHTML='<div style="padding:12px;color:var(--muted);font-size:9px">Connecting to Live Chat...</div>';
+    return;
+  }
+  if(!firebaseUserCache.length){
+    $('firebaseChatUsers').innerHTML='<div style="padding:16px;text-align:center;color:var(--muted);font-size:9px">No other logged-in users are online yet.</div>';
+    return;
+  }
+  $('firebaseChatUsers').innerHTML=firebaseUserCache.map(u=>{
+    const active=firebaseSelectedChatUser?.uid===u.uid;
+    const sub=esc([u.role,u.unit].filter(Boolean).join(" • "));
+    return `<button type="button" class="chat-user-btn${active?' active':''}" onclick="openFirebaseChat('${esc(String(u.uid))}')">
+      <span class="chat-avatar">${esc(chatInitials(u.fullName))}</span>
+      <span style="min-width:0;flex:1"><span class="chat-user-name">${esc(u.fullName||"User")}</span><span class="chat-user-sub">${sub||"Authorized user"}</span></span>
+      <span class="chat-online-dot"></span>
+    </button>`;
+  }).join("");
+}
+
+function updateChatHeaderStatus(){
+  const s=$("firebaseChatStatus");
+  if(!s) return;
+  const connected = firebaseReady;
+  s.innerHTML=`<span class="chat-online-dot"></span>${connected?"LIVE":"Connecting"}`;
+}
+
+function openFirebaseChat(uid){
+  const target=firebaseUserCache.find(u=>String(u.uid)===String(uid));
+  if(!target || !firebaseChatUser || !firebaseDb) return;
+  firebaseSelectedChatUser=target;
+  if(firebaseMessagesRef) firebaseMessagesRef.off();
+  const chatId=chatIdFor(firebaseChatUser.uid,target.uid);
+  firebaseMessagesRef=firebaseDb.ref(`chats/${chatId}/messages`).orderByChild("timestamp");
+  firebaseMessagesRef.on("value",snap=>{
+    const rows=[];
+    snap.forEach(ch=>rows.push({id:ch.key,...(ch.val()||{})}));
+    renderFirebaseMessages(rows);
+  });
+  firebaseDb.ref(`chats/${chatId}/meta`).update({
+    participants:{[firebaseChatUser.uid]:true,[target.uid]:true},
+    updatedAt:window.firebase.database.ServerValue.TIMESTAMP
+  }).catch(()=>{});
+  renderChatUsers();
+  const header=$("firebaseChatHeader");
+  if(header) header.innerHTML=`<div class="chat-avatar">${esc(chatInitials(target.fullName))}</div><div><h3>${esc(target.fullName||"User")}</h3><small>${esc([target.role,target.unit].filter(Boolean).join(" • ")||"Online")}</small></div>`;
+  $("firebaseChatInput").disabled=false;
+  $("firebaseChatSend").disabled=false;
+  $("firebaseChatInput").focus();
+}
+
+function renderFirebaseMessages(rows){
+  const box=$("firebaseChatMessages");
+  if(!box) return;
+  if(!rows.length){box.innerHTML='<div class="chat-empty">No messages yet. Start the conversation.</div>';return;}
+  box.innerHTML=rows.map(m=>{
+    const mine=String(m.senderUid||"")===String(firebaseChatUser?.uid||"");
+    const when=m.timestamp?new Date(Number(m.timestamp)).toLocaleString([], {month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}):"Sending...";
+    return `<div class="chat-bubble-row${mine?' mine':''}"><div class="chat-bubble"><div class="chat-text">${esc(m.text||"")}</div><div class="chat-time">${mine?'You':esc(m.senderName||"User")} • ${esc(when)}</div></div></div>`;
+  }).join("");
+  box.scrollTop=box.scrollHeight;
+}
+
+async function sendFirebaseChatMessage(e){
+  e.preventDefault();
+  const input=$("firebaseChatInput");
+  const text=String(input?.value||"").trim();
+  if(!text || !firebaseReady || !firebaseChatUser || !firebaseSelectedChatUser || !firebaseDb) return;
+  const chatId=chatIdFor(firebaseChatUser.uid,firebaseSelectedChatUser.uid);
+  const msgRef=firebaseDb.ref(`chats/${chatId}/messages`).push();
+  const payload={
+    senderUid:firebaseChatUser.uid,
+    senderName:currentUser?.fullName||currentUser?.username||"User",
+    senderRole:currentUser?.role||"",
+    senderUnit:currentUser?.unit||"",
+    text:text.slice(0,2000),
+    timestamp:window.firebase.database.ServerValue.TIMESTAMP
+  };
+  try{
+    $("firebaseChatSend").disabled=true;
+    await msgRef.set(payload);
+    input.value="";
+  }catch(err){alert("Unable to send message: "+(err.message||err));}
+  finally{$("firebaseChatSend").disabled=false;input.focus();}
 }
 
 async function logout(){
