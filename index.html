@@ -569,6 +569,18 @@ let adminData = null;
 let currentUnitData = null;
 let currentPage = "dashboard";
 
+
+function displayDateValue(v){
+  const s=String(v ?? "").trim();
+  if(!s) return "";
+  if(/GMT[+-]\d{4}/i.test(s) || /\d{2}:\d{2}:\d{2}/.test(s)){
+    const d=new Date(s);
+    if(!Number.isNaN(d.getTime())){
+      return d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+    }
+  }
+  return s;
+}
 const $ = id => document.getElementById(id);
 const esc = v => String(v ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 
@@ -868,7 +880,7 @@ function getTeamLeadersByShift(rows){
 function renderAllTeamLeaders(rows){
   const groups=getTeamLeadersByShift(rows);
   if(!groups.length) return '<div class="tl-list"><div class="tl-list-title">👤 Team Leaders</div><div style="font-size:9px;color:var(--muted)">No Team Leader assigned yet.</div></div>';
-  return `<div class="tl-list"><div class="tl-list-title">👤 All Team Leaders</div>${groups.map(g=>`<div class="tl-item"><div class="tl-item-shift">${esc(g.shiftId||"Shift")}</div><div><div class="tl-item-name">${g.names.map(n=>esc(n)).join("<br>")}</div><span class="tl-item-time">${esc(g.shift||"")} • ${esc(g.date||"")}</span></div></div>`).join("")}</div>`;
+  return `<div class="tl-list"><div class="tl-list-title">👤 All Team Leaders</div>${groups.map(g=>`<div class="tl-item"><div class="tl-item-shift">${esc(g.shiftId||"Shift")}</div><div><div class="tl-item-name">${g.names.map(n=>esc(n)).join("<br>")}</div><span class="tl-item-time">${esc(g.shift||"")} • ${esc(displayDateValue(g.date))}</span></div></div>`).join("")}</div>`;
 }
 
 function renderAllUnits(){
@@ -985,7 +997,7 @@ function filterDutyAdmin(){
 function renderAssignmentTable(rows){
   if(!rows.length)return '<div class="empty" style="padding:25px;text-align:center;color:var(--muted)">No assignment records.</div>';
   return `<div class="table-wrap"><table><thead><tr><th>Unit</th><th>Shift</th><th>Date</th><th>Slot</th><th>Personnel</th><th>Status</th><th>Action</th></tr></thead><tbody>
-    ${rows.map(r=>`<tr><td>${esc(r.cemetery)}</td><td>${esc(r.shift)}</td><td>${esc(r.date)}</td><td>Staff ${r.slot}</td><td><b>${esc(r.personnelName||"VACANT")}</b></td><td><span class="status ${r.personnelName?'ok':'warn'}">${r.status}</span></td><td>${currentUser.role==="ADMIN"?`<div class="actions"><button type="button" class="btn" onclick='editAssignment(${JSON.stringify(r).replace(/'/g,"&#39;")})'>Edit</button><button type="button" class="btn danger" onclick="deleteAssignment(${r.row},${r.slot})">Delete</button></div>`:""}</td></tr>`).join("")}
+    ${rows.map(r=>`<tr><td>${esc(r.cemetery)}</td><td>${esc(r.shift)}</td><td>${esc(displayDateValue(r.date))}</td><td>Staff ${r.slot}</td><td><b>${esc(r.personnelName||"VACANT")}</b></td><td><span class="status ${r.personnelName?'ok':'warn'}">${r.status}</span></td><td>${currentUser.role==="ADMIN"?`<div class="actions"><button type="button" class="btn" onclick='editAssignment(${JSON.stringify(r).replace(/'/g,"&#39;")})'>Edit</button><button type="button" class="btn danger" onclick="deleteAssignment(${r.row},${r.slot})">Delete</button></div>`:""}</td></tr>`).join("")}
   </tbody></table></div>`;
 }
 function renderDutyTable(rows){
