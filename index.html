@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Oplan Kaluluwa 2026 Antipolo City Health Office</title>
+<title>CHO-Oplan Kaluluwa 2026</title>
 <style>
 :root{
  --nav:#07386e;--nav2:#05294f;--blue:#0b76df;--blue2:#075eb5;
@@ -407,6 +407,11 @@ button{cursor:pointer}
         <div id="tlPasswordField" class="field">
           <label>Team Leader Password</label>
           <input id="userPasswordDisplay" readonly style="background:#f5f8fc;color:#075eb5;font-weight:900">
+        </div>
+
+        <div id="adminPasswordField" class="field hidden">
+          <label>Admin Password <span>*</span></label>
+          <input id="userAdminPassword" type="password" autocomplete="new-password" placeholder="Enter admin password">
         </div>
       </div>
 
@@ -1082,14 +1087,18 @@ function updateUserEditorMode(){
   const isAdmin=role==="ADMIN";
   $("adminUsernameField").classList.toggle("hidden",!isAdmin);
   $("tlPasswordField").classList.toggle("hidden",isAdmin);
+  $("adminPasswordField").classList.toggle("hidden",!isAdmin);
   $("tlAccessNotice").classList.toggle("hidden",isAdmin);
   $("userUsername").required=isAdmin;
+  $("userAdminPassword").required=isAdmin;
 
   if(isAdmin){
     $("userPasswordDisplay").value="";
+    $("userAdminPassword").value="";
     $("userUnit").disabled=true;
     $("userUnit").value="";
   }else{
+    $("userAdminPassword").value="";
     $("userUnit").disabled=false;
     const unit=getUnitByName($("userUnit").value);
     $("userPasswordDisplay").value=unit ? "chounit"+unit.Group : "";
@@ -1104,6 +1113,7 @@ function openNewUser(){
   $("userStatus").value="ACTIVE";
   $("userUnit").value="";
   $("userPasswordDisplay").value="";
+  $("userAdminPassword").value="";
   $("userPersonnelId").value="";
   updateUserEditorMode();
   openModal("userModal");
@@ -1117,8 +1127,10 @@ function editUser(u){
   $("userStatus").value=u.status||"ACTIVE";
   $("userUnit").value=u.unit||"";
   $("userPasswordDisplay").value=u.loginPassword||"";
+  $("userAdminPassword").value="";
   $("userPersonnelId").value=u.personnelId||"";
   updateUserEditorMode();
+  if(u.role==="ADMIN") $("userAdminPassword").value=u.loginPassword||"";
   openModal("userModal");
 }
 
@@ -1137,7 +1149,7 @@ $("saveUserBtn").addEventListener("click",async()=>{
       username:role==="ADMIN"?$("userUsername").value.trim():"",
       role:role,
       unit:role==="TEAM_LEADER"?$("userUnit").value:"",
-      password:role==="ADMIN"?$("userPasswordDisplay").value:"",
+      password:role==="ADMIN"?$("userAdminPassword").value:"",
       personnelId:$("userPersonnelId").value.trim(),
       status:$("userStatus").value
     });
