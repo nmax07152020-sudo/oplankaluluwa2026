@@ -346,6 +346,45 @@ button{cursor:pointer}
 .unit-card:hover .unit-emblem{transform:translateY(-1px) rotate(-2deg);}
 @media (prefers-reduced-motion: reduce){.unit-card .unit-emblem{transition:none}.unit-card:hover .unit-emblem{transform:none}}
 </style>
+
+<style id="v52-responsive-system-online">
+/* V52 — Responsive mobile header: System Online gets its own centered row. */
+@media (max-width:700px){
+  .public-header-actions .login-stack{
+    display:contents !important;
+  }
+  .public-header-actions #loginBtn{
+    grid-column:2 !important;
+    grid-row:1 !important;
+    align-self:stretch !important;
+  }
+  .public-header-actions .system-status{
+    position:static !important;
+    grid-column:1 / -1 !important;
+    grid-row:2 !important;
+    justify-self:center !important;
+    align-self:center !important;
+    transform:none !important;
+    white-space:nowrap !important;
+    font-size:8px !important;
+    line-height:1.1 !important;
+    margin:-1px 0 0 !important;
+    padding:0 !important;
+  }
+  .public-header-actions .ios-guide{
+    grid-column:1 / -1 !important;
+    grid-row:3 !important;
+    order:unset !important;
+  }
+}
+
+/* Very narrow screens: keep the same layout while slightly tightening the controls. */
+@media (max-width:380px){
+  .public-header-actions .system-status{
+    font-size:7.5px !important;
+  }
+}
+</style>
 </head>
 <body>
 
@@ -765,7 +804,7 @@ const UNIT_VISUALS = [
   {icon:"✦", accent:"#be123c", soft:"#fff1f2"},
   {icon:"🌺", accent:"#c026d3", soft:"#fdf4ff"},
   {icon:"🕊️", accent:"#059669", soft:"#ecfdf5"},
-  {icon:"🩺", accent:"#1d4ed8", soft:"#eff6ff"}
+  {icon:"🌳", accent:"#1d4ed8", soft:"#effdf4"}
 ];
 
 function unitVisual(i){return UNIT_VISUALS[i % UNIT_VISUALS.length];}
