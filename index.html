@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>CHO-Oplan Kaluluwa 2026</title>
+<title>Oplan Kaluluwa 2026</title>
 <style>
 :root{
  --nav:#07386e;--nav2:#05294f;--blue:#0b76df;--blue2:#075eb5;
@@ -452,6 +452,47 @@ button{cursor:pointer}
   </div>
 </div>
 
+<!-- DEPLOYMENT UNIT MODAL -->
+<div id="unitModal" class="modal-backdrop">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Deployment Unit Management</h3>
+      <button type="button" class="close" data-close="unitModal">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="unitManageId">
+      <div class="notice" style="margin-bottom:10px">
+        Unit number is generated automatically. Adding a unit also creates its 5 blank duty-shift rows.
+      </div>
+      <div class="form-grid two">
+        <div class="field">
+          <label>Next Unit Number</label>
+          <input id="unitManageGroup" readonly style="background:#f5f8fc;color:#075eb5;font-weight:900">
+        </div>
+        <div class="field">
+          <label>Status</label>
+          <select id="unitManageStatus"><option>ACTIVE</option><option>INACTIVE</option></select>
+        </div>
+      </div>
+      <div class="field" style="margin-top:10px">
+        <label>Cemetery / Deployment Post <span>*</span></label>
+        <input id="unitManageName" placeholder="Enter deployment unit / cemetery / post">
+      </div>
+      <div class="field" style="margin-top:10px">
+        <label>Covered Locations</label>
+        <textarea id="unitManageCovered" rows="4" placeholder="Enter covered locations, separated by line or comma"></textarea>
+      </div>
+      <div class="notice" style="margin-top:10px">
+        <b>Delete protection:</b> a unit with recorded reports or patient records cannot be permanently deleted so operational history is preserved.
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn" data-close="unitModal">Cancel</button>
+      <button id="saveUnitBtn" type="button" class="btn primary">Save Unit</button>
+    </div>
+  </div>
+</div>
+
 <!-- DRIVER ON DUTY MODAL -->
 <div id="driverDutyModal" class="modal-backdrop">
   <div class="modal">
@@ -623,17 +664,24 @@ function setLoginRole(role){
   }
 }
 
-function populateLoginUnits(){
+async function populateLoginUnits(){
   const el=$("loginUnit");
-  if(!el || el.options.length>1) return;
-  el.innerHTML=`<option value="">Select your deployment unit</option>` +
-    LOCAL_UNITS.map(u=>`<option value="${esc(u.name)}">Unit ${u.group} — ${esc(u.name)}</option>`).join("");
+  if(!el) return;
+  try{
+    const d=await apiGet("unitsForLogin");
+    const units=(d.units||[]);
+    el.innerHTML=`<option value="">Select your deployment unit</option>` +
+      units.map(u=>`<option value="${esc(u.name)}">Unit ${esc(u.group)} — ${esc(u.name)}</option>`).join("");
+  }catch(e){
+    el.innerHTML=`<option value="">Select your deployment unit</option>` +
+      LOCAL_UNITS.map(u=>`<option value="${esc(u.name)}">Unit ${u.group} — ${esc(u.name)}</option>`).join("");
+  }
 }
 
-function openLogin(){
+async function openLogin(){
   $("loginMessage").classList.remove("show");
   $("loginForm").reset();
-  populateLoginUnits();
+  await populateLoginUnits();
   setLoginRole("TEAM_LEADER");
   openModal("loginModal");
   $("loginUnit").focus();
@@ -825,18 +873,35 @@ function renderAllTeamLeaders(rows){
 
 function renderAllUnits(){
   if(!adminData) return;
+  const units=(adminData.units||[]).filter(u=>String(u.Status||'ACTIVE').toUpperCase()!=='DELETED');
   $("unitPage").innerHTML=`
-    <div class="section-head"><div><h2>All Deployment Units</h2><p>Admin can open any unit.</p></div></div>
-    <div class="public-units">${adminData.units.map((u,i)=>{
-      const unitName=u["Cemetery / Post"];
+    <div class="section-head">
+      <div><h2>All Deployment Units</h2><p>Admin can add, view and delete deployment units directly from the system.</p></div>
+      <button type="button" class="btn primary" onclick="openNewUnit()">＋ Add Deployment Unit</button>
+    </div>
+    <div class="public-units">${units.map((u)=>{
+      const originalIndex=(adminData.units||[]).indexOf(u);
+      const unitName=u["Cemetery / Post"]||'';
       const teamRows=(adminData.assignments||[]).filter(r=>r.cemetery===unitName);
-      return `<div class="unit-card"><div class="u-group">Unit ${u.Group}</div><h3>${esc(unitName)}</h3>
-      <div style="font-size:9px;color:var(--muted);line-height:1.45">${esc(u["Covered Locations"]||"")}</div>
-      <div class="unit-meta" style="margin-top:10px"><div><span>Team Leaders</span><b>${getTeamLeadersByShift(teamRows).reduce((n,g)=>n+g.names.length,0)||0}</b></div><div><span>Status</span><b>${esc(u["Status"]||"ACTIVE")}</b></div></div>
-      ${renderAllTeamLeaders(teamRows)}
-      <div style="margin-top:9px"><button type="button" class="btn primary" onclick="adminOpenUnit(${i})">View Unit</button></div></div>`;
+      const status=String(u.Status||'ACTIVE').toUpperCase();
+      const tlCount=getTeamLeadersByShift(teamRows).reduce((n,g)=>n+g.names.length,0)||0;
+      return `<div class="unit-card">
+        <div class="u-group">Unit ${esc(u.Group||'')}</div>
+        <h3>${esc(unitName)}</h3>
+        <div style="font-size:9px;color:var(--muted);line-height:1.45">${esc(u["Covered Locations"]||"")}</div>
+        <div class="unit-meta" style="margin-top:10px">
+          <div><span>Team Leaders</span><b>${tlCount}</b></div>
+          <div><span>Status</span><b>${esc(status)}</b></div>
+        </div>
+        ${renderAllTeamLeaders(teamRows)}
+        <div class="actions" style="margin-top:10px">
+          <button type="button" class="btn primary" onclick="adminOpenUnit(${originalIndex})">View Unit</button>
+          <button type="button" class="btn danger" onclick='deleteDeploymentUnit(${JSON.stringify(u).replace(/'/g,"&#39;")})'>Delete</button>
+        </div>
+      </div>`;
     }).join("")}</div>`;
 }
+
 
 function renderLeaderDashboard(){
   const u=currentUnitData.unit,t=currentUnitData.reportTotals;
@@ -1032,7 +1097,8 @@ function filterPersonnel(){
 
 function populateUserUnitSelect(){
   const el=$("userUnit");if(!el)return;
-  el.innerHTML=`<option value="">Select unit</option>`+adminData.units.map(u=>`<option>${esc(u["Cemetery / Post"])}</option>`).join("");
+  const units=(adminData.units||[]).filter(u=>String(u.Status||'ACTIVE').toUpperCase()!=='INACTIVE');
+  el.innerHTML=`<option value="">Select unit</option>`+units.map(u=>`<option>${esc(u["Cemetery / Post"])}</option>`).join("");
 }
 function renderUsersPage(){
   $("usersPage").innerHTML=`
@@ -1076,6 +1142,56 @@ function renderUsersPage(){
         </table>
       </div>
     </div>`;
+}
+
+async function openNewUnit(){
+  const units=adminData?.units||[];
+  const maxGroup=units.reduce((m,u)=>Math.max(m,Number(u.Group)||0),0);
+  $("unitManageId").value="";
+  $("unitManageGroup").value=String(maxGroup+1);
+  $("unitManageName").value="";
+  $("unitManageCovered").value="";
+  $("unitManageStatus").value="ACTIVE";
+  openModal("unitModal");
+  $("unitManageName").focus();
+}
+
+$("saveUnitBtn").addEventListener("click",async()=>{
+  const btn=$("saveUnitBtn");
+  const name=$("unitManageName").value.trim();
+  if(!name){alert("Cemetery / Deployment Post is required.");return;}
+  btn.disabled=true;
+  try{
+    await apiPost("adminSaveUnit",{
+      name:name,
+      covered:$("unitManageCovered").value.trim(),
+      status:$("unitManageStatus").value
+    });
+    closeModal("unitModal");
+    await loadRoleData();
+    renderAllUnits();
+    alert("Deployment unit saved.");
+  }catch(e){
+    alert(e.message);
+  }finally{
+    btn.disabled=false;
+  }
+});
+
+async function deleteDeploymentUnit(u){
+  const unitName=String(u?.["Cemetery / Post"]||"").trim();
+  const group=String(u?.Group||"").trim();
+  if(!unitName) return;
+  const ok=confirm(`Delete Deployment Unit ${group}?\n\n${unitName}\n\nThe unit will be permanently removed only when it has no recorded reports or patient records. Related blank duty rows and user accounts will also be removed.`);
+  if(!ok) return;
+  try{
+    await apiPost("adminDeleteUnit",{unitId:u["Cemetery ID"]||"",name:unitName});
+    await loadRoleData();
+    renderAllUnits();
+    alert("Deployment unit deleted.");
+  }catch(e){
+    alert(e.message);
+  }
 }
 
 function getUnitByName(name){
