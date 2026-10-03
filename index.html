@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Oplan Kaluluwa 2026 V54 | Antipolo City Health Office</title>
+<title>Oplan Kaluluwa 2026</title>
 <style>
 :root{
  --nav:#07386e;--nav2:#05294f;--blue:#0b76df;--blue2:#075eb5;
@@ -391,6 +391,31 @@ button{cursor:pointer}
     font-size:7.5px !important;
   }
 }
+</style>
+
+<style id="unit-connectivity-v58">
+.unit-connectivity-card{margin-top:14px}
+.unit-connectivity-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.unit-connectivity-title{font-size:13px;font-weight:900;color:var(--text);margin:0}
+.unit-connectivity-sub{font-size:8px;color:var(--muted);margin:2px 0 0}
+.unit-connectivity-summary{display:flex;gap:7px;flex-wrap:wrap}
+.unit-connectivity-summary span{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border-radius:999px;background:#f4f8fc;border:1px solid var(--line);font-size:8px;font-weight:900;color:#456178}
+.unit-connectivity-summary .online-count{color:#087d50;background:#eaf8f1;border-color:#c8ead9}
+.unit-connectivity-summary .offline-count{color:#7a8797}
+.unit-connectivity-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.unit-connectivity-item{border:1px solid var(--line);background:#fff;border-radius:12px;padding:9px;min-width:0;position:relative}
+.unit-connectivity-item.mine{box-shadow:inset 0 0 0 1px #b9dfff}
+.unit-connectivity-top{display:flex;align-items:center;justify-content:space-between;gap:7px}
+.unit-connectivity-unit{font-size:8px;font-weight:900;color:#0b66bf}
+.unit-connectivity-badge{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:4px 7px;font-size:7px;font-weight:900;white-space:nowrap}
+.unit-connectivity-badge.online{background:#e8f8f0;color:#087d50}
+.unit-connectivity-badge.offline{background:#f1f4f7;color:#7a8797}
+.unit-connectivity-name{font-size:9px;font-weight:800;line-height:1.35;color:var(--text);margin-top:6px;overflow-wrap:anywhere}
+.unit-connectivity-note{font-size:7px;color:#0b76df;font-weight:900;margin-top:5px}
+.unit-connectivity-checking{font-size:9px;color:var(--muted);padding:10px 2px}
+@media(max-width:1100px){.unit-connectivity-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:780px){.unit-connectivity-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.unit-connectivity-grid{grid-template-columns:1fr}.unit-connectivity-item{padding:10px}}
 </style>
 </head>
 <body>
@@ -980,7 +1005,8 @@ window.addEventListener("online",async()=>{
     }
   },1500);
 });
-window.addEventListener("offline",()=>setOfflineSyncStatus("pending","● OFFLINE — New reports will be saved on this device"));
+window.addEventListener("offline",()=>{setOfflineSyncStatus("pending","● OFFLINE — New reports will be saved on this device");renderUnitConnectivity();});
+window.addEventListener("online",()=>{renderUnitConnectivity();});
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible") syncPendingReports();});
 setInterval(()=>syncPendingReports(),30000);
 
@@ -1322,6 +1348,51 @@ function navigate(page){
   if(page==="adminReports") renderAdminReports();
 }
 
+
+function renderUnitConnectivity(){
+  const box=$("unitConnectivity");
+  if(!box) return;
+  const units=Array.isArray(LOCAL_UNITS)?LOCAL_UNITS:[];
+  const presence=Array.isArray(firebaseUserCache)?firebaseUserCache:[];
+  const onlineUnits=new Set(
+    presence
+      .filter(v=>String(v.role||"").toUpperCase()==="TEAM_LEADER" && v.online===true && String(v.unit||"").trim())
+      .map(v=>String(v.unit).trim())
+  );
+  const myUnit=String(currentUser?.unit||"").trim();
+  const ready=typeof firebaseReady!=="undefined" && firebaseReady;
+  const ownBrowserOnline=navigator.onLine!==false;
+
+  if(!ready && !onlineUnits.size){
+    box.innerHTML=`<div class="card unit-connectivity-card"><div class="unit-connectivity-head"><div><h2 class="unit-connectivity-title">All Unit Connectivity</h2><p class="unit-connectivity-sub">Live Team Leader connection status for all 14 deployment units.</p></div></div><div class="unit-connectivity-checking">● Checking live unit connections…</div></div>`;
+    return;
+  }
+
+  let onlineCount=0;
+  const items=units.map((u,i)=>{
+    const name=String(u.name||"").trim();
+    const isOnline=onlineUnits.has(name) || (ready && ownBrowserOnline && myUnit===name);
+    if(isOnline) onlineCount++;
+    const mine=myUnit===name;
+    const label=isOnline?"ONLINE":"OFFLINE";
+    const note=mine?"YOUR UNIT":"";
+    return `<div class="unit-connectivity-item${mine?' mine':''}">
+      <div class="unit-connectivity-top"><span class="unit-connectivity-unit">UNIT ${String(i+1).padStart(2,'0')}</span><span class="unit-connectivity-badge ${isOnline?'online':'offline'}">● ${label}</span></div>
+      <div class="unit-connectivity-name">${esc(name)}</div>
+      ${note?`<div class="unit-connectivity-note">🔒 ${note}</div>`:""}
+    </div>`;
+  }).join("");
+  const offlineCount=Math.max(0,units.length-onlineCount);
+
+  box.innerHTML=`<div class="card unit-connectivity-card">
+    <div class="unit-connectivity-head">
+      <div><h2 class="unit-connectivity-title">All Unit Connectivity</h2><p class="unit-connectivity-sub">Live Team Leader connection status for all 14 deployment units.</p></div>
+      <div class="unit-connectivity-summary"><span class="online-count">● ${onlineCount} Online</span><span class="offline-count">● ${offlineCount} Offline</span></div>
+    </div>
+    <div class="unit-connectivity-grid">${items}</div>
+  </div>`;
+}
+
 function renderAdminDashboard(){
   const d=adminData.dashboard;
   $("privateDashboard").innerHTML=`${offlineModeBanner()}
@@ -1337,7 +1408,8 @@ function renderAdminDashboard(){
         <div class="u-group">Deployment Unit ${i+1}</div><h3>${esc(u["Cemetery / Post"] || "")}</h3>
         <div class="unit-meta"><div><span>Reports</span><b>${u["Total Reports"]||0}</b></div><div><span>Persons</span><b>${u["Total Persons"]||0}</b></div></div>
       </div>`).join("")}</div>
-    </div>`;
+    </div><div id="unitConnectivity"></div>`;
+  renderUnitConnectivity();
 }
 
 async function adminOpenUnit(index){
@@ -1443,10 +1515,12 @@ function renderLeaderDashboard(){
       <div class="kpi"><div class="kpi-icon">🩺</div><div><label>Persons Assisted</label><strong>${t.totalPersons}</strong><small>This unit</small></div></div>
       <div class="kpi"><div class="kpi-icon">👤</div><div><label>Team Leaders</label><strong style="font-size:15px">${getTeamLeadersByShift(currentUnitData.duty).reduce((n,g)=>n+g.names.length,0)||0}</strong><small>All assigned shifts</small></div></div>
     </div>
+    <div id="unitConnectivity"></div>
     <div class="card" style="margin-top:14px">${renderAllTeamLeaders(currentUnitData.duty)}</div>
     <div class="card"><div class="section-head"><div><h2>Report Summary</h2><p>Counts for your locked unit.</p></div></div><div class="mini-cards">
       <div class="mini"><span>Vital Signs</span><b>${t["Vital Signs"]||0}</b></div><div class="mini"><span>Medicine</span><b>${t["Medicine Request"]||0}</b></div><div class="mini"><span>First Aid</span><b>${t["First Aid"]||0}</b></div><div class="mini"><span>Medical Assistance</span><b>${t["Medical Assistance"]||0}</b></div>
     </div></div>`;
+  renderUnitConnectivity();
 }
 
 function renderAdminUnitDetail(){
@@ -2143,6 +2217,7 @@ async function initFirebaseChat(){
       refreshSelectedUserFromCache();
       renderChatUsers();
       updateChatHeaderStatus();
+      renderUnitConnectivity();
     });
 
     firebaseUnreadRef=firebaseDb.ref("userUnread/"+firebaseStableChatKey);
@@ -2155,6 +2230,7 @@ async function initFirebaseChat(){
     firebaseReady=true;
     updateChatHeaderStatus();
     updateChatUnreadBadge();
+    renderUnitConnectivity();
     if($("chatPage")?.classList.contains("active")) renderChatPage();
   }catch(e){
     firebaseReady=false;
