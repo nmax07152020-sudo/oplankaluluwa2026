@@ -903,56 +903,86 @@ async function setOfflineSyncStatus(kind,text){
   el.className="offline-sync-status "+(kind||"");
   el.textContent=text;
 }
+let offlineSyncRetryTimer=null;
+let lastOfflineSyncError="";
 async function syncPendingReports(){
   if(syncInFlight) return syncInFlight;
   syncInFlight=(async()=>{
-  if(!currentUser || !token) return {synced:0,pending:0};
-  let rows=[];
-  try{rows=await getPendingOfflineReports();}
-  catch(err){await setOfflineSyncStatus("error","● Local storage unavailable");return {synced:0,pending:0};}
-  if(currentUser.role==="TEAM_LEADER") rows=rows.filter(r=>String(r.ownerUnit||"")===String(currentUser.unit||""));
-  if(!rows.length){
-    if(navigator.onLine) await setOfflineSyncStatus("online","● ONLINE — No pending offline reports");
-    else await setOfflineSyncStatus("pending","● OFFLINE — New reports will be saved on this device");
-    return {synced:0,pending:0};
-  }
-  if(!navigator.onLine){await setOfflineSyncStatus("pending",`● OFFLINE — ${rows.length} report${rows.length===1?'':'s'} waiting to sync`);return {synced:0,pending:rows.length};}
-  let synced=0;
-  for(const row of rows){
-    try{
-      await apiPost("submitReport",row.payload,true);
-      await deleteOfflineReport(row.localReportId);
-      synced++;
-    }catch(err){
-      if(isNetworkError(err)) break;
-      break;
+    if(!currentUser || !token) return {synced:0,pending:0};
+    let rows=[];
+    try{rows=await getPendingOfflineReports();}
+    catch(err){await setOfflineSyncStatus("error","● Local storage unavailable");return {synced:0,pending:0};}
+    if(currentUser.role==="TEAM_LEADER") rows=rows.filter(r=>String(r.ownerUnit||"")===String(currentUser.unit||""));
+    if(!rows.length){
+      lastOfflineSyncError="";
+      if(navigator.onLine) await setOfflineSyncStatus("online","● ONLINE — No pending offline reports");
+      else await setOfflineSyncStatus("pending","● OFFLINE — New reports will be saved on this device");
+      return {synced:0,pending:0};
     }
-  }
-  let remaining=await getPendingOfflineReports();
-  if(currentUser.role==="TEAM_LEADER") remaining=remaining.filter(r=>String(r.ownerUnit||"")===String(currentUser.unit||""));
-  if(!remaining.length) await setOfflineSyncStatus("online",synced?`● ONLINE — ${synced} offline report${synced===1?'':'s'} synced`:`● ONLINE — No pending offline reports`);
-  else if(synced) await setOfflineSyncStatus("pending",`● ONLINE — ${synced} synced • ${remaining.length} still pending`);
-  else await setOfflineSyncStatus("pending",`● ONLINE — ${remaining.length} report${remaining.length===1?'':'s'} waiting to sync`);
-  return {synced,pending:remaining.length};
+    if(!navigator.onLine){
+      await setOfflineSyncStatus("pending",`● OFFLINE — ${rows.length} report${rows.length===1?'':'s'} waiting to sync`);
+      return {synced:0,pending:rows.length};
+    }
+    let synced=0;
+    let syncError="";
+    for(const row of rows){
+      try{
+        await apiPost("submitReport",row.payload,true);
+        await deleteOfflineReport(row.localReportId);
+        synced++;
+      }catch(err){
+        syncError=String(err?.message||err||"Sync failed");
+        lastOfflineSyncError=syncError;
+        break;
+      }
+    }
+    let remaining=await getPendingOfflineReports();
+    if(currentUser.role==="TEAM_LEADER") remaining=remaining.filter(r=>String(r.ownerUnit||"")===String(currentUser.unit||""));
+    if(!remaining.length){
+      lastOfflineSyncError="";
+      await setOfflineSyncStatus("online",synced?`● ONLINE — ${synced} offline report${synced===1?'':'s'} synced`:`● ONLINE — No pending offline reports`);
+    }else if(synced){
+      await setOfflineSyncStatus("pending",`● ONLINE — ${synced} synced • ${remaining.length} still pending`);
+    }else{
+      const shortErr=syncError ? ` • ${syncError.slice(0,70)}` : "";
+      await setOfflineSyncStatus("pending",`● ONLINE — ${remaining.length} report${remaining.length===1?'':'s'} waiting to sync${shortErr}`);
+    }
+    return {synced,pending:remaining.length,error:syncError};
   })();
   try{return await syncInFlight;}finally{syncInFlight=null;}
 }
+function scheduleOfflineSyncRetry(){
+  if(offlineSyncRetryTimer) clearInterval(offlineSyncRetryTimer);
+  offlineSyncRetryTimer=setInterval(async()=>{
+    if(navigator.onLine && currentUser && token){
+      const r=await syncPendingReports();
+      if(r && r.pending===0){clearInterval(offlineSyncRetryTimer);offlineSyncRetryTimer=null;}
+    }
+  },5000);
+}
 window.addEventListener("online",async()=>{
-  if(currentUser){
-    if(token){
-      try{await apiPost("refreshSession",{},true);isOfflineSession=false;await loadRoleData();if(!firebaseBaseReady) await initFirebaseChat();}catch(err){
-        // Existing session may be expired; offline cached access remains until expiry, but online data refresh needs a new login.
+  // Give Android/WebView a moment to finish restoring the network route.
+  setTimeout(async()=>{
+    if(currentUser && token){
+      try{
+        await apiPost("refreshSession",{},true);
+        isOfflineSession=false;
+        await loadRoleData();
+        if(!firebaseBaseReady) await initFirebaseChat();
+      }catch(err){
+        lastOfflineSyncError=String(err?.message||err||"Session refresh failed");
       }
     }
-  }
-  const result=await syncPendingReports();
-  if(result && result.synced && currentUser){
-    try{await loadRoleData();if(currentPage==="report") renderReportPage();}catch(err){}
-  }
+    const result=await syncPendingReports();
+    if(result && result.pending>0) scheduleOfflineSyncRetry();
+    if(result && result.synced && currentUser){
+      try{await loadRoleData();if(currentPage==="report") renderReportPage();}catch(err){}
+    }
+  },1500);
 });
 window.addEventListener("offline",()=>setOfflineSyncStatus("pending","● OFFLINE — New reports will be saved on this device"));
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible") syncPendingReports();});
-setInterval(()=>syncPendingReports(),60000);
+setInterval(()=>syncPendingReports(),30000);
 
 async function apiGet(action, params={}) {
   const q = new URLSearchParams({action, ...params});
