@@ -409,7 +409,7 @@ button{cursor:pointer}
 .unit-connectivity-item{border:1px solid var(--line);background:#fff;border-radius:12px;padding:9px;min-width:0;position:relative}
 .unit-connectivity-item.mine{box-shadow:inset 0 0 0 1px #b9dfff}
 .unit-connectivity-top{display:flex;align-items:center;justify-content:space-between;gap:7px}
-.unit-connectivity-unit{font-size:8px;font-weight:900;color:#0b66bf}
+.unit-connectivity-unit{display:block;flex:1;min-width:0;font-size:8px;font-weight:900;line-height:1.3;color:#0b66bf;overflow-wrap:anywhere}
 .unit-connectivity-badge{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:4px 7px;font-size:7px;font-weight:900;white-space:nowrap}
 .unit-connectivity-badge.online{background:#e8f8f0;color:#087d50}
 .unit-connectivity-badge.offline{background:#f1f4f7;color:#7a8797}
@@ -420,6 +420,23 @@ button{cursor:pointer}
 @media(max-width:780px){.unit-connectivity-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){.unit-connectivity-grid{grid-template-columns:1fr}.unit-connectivity-item{padding:10px}}
 </style>
+<style id="unit-snapshot-cemetery-name-fix">
+/* Unit Snapshot: show each real cemetery name as the card title, not the field label. */
+.unit-snapshot-name{font-size:13px!important;line-height:1.35!important;margin:0 0 12px!important;overflow-wrap:anywhere;position:relative;z-index:1;text-transform:none!important;letter-spacing:normal!important;color:var(--text)!important}
+</style>
+
+<style id="compact-staff-login-fields-v1">
+/* Keep the staff login form compact instead of stretching credential boxes too wide. */
+#loginForm > .field{width:100%;max-width:320px;margin-left:auto;margin-right:auto;min-width:0}
+#loginForm > .field input,
+#loginForm > .field select{width:100%;max-width:100%;min-width:0}
+#loginForm > #loginSubmit{width:100%;max-width:320px;justify-self:center}
+@media(max-width:480px){
+  #loginForm > .field,
+  #loginForm > #loginSubmit{max-width:100%}
+}
+</style>
+
 </head>
 <body>
 
@@ -1158,43 +1175,61 @@ function setLoginRole(role){
   }
 }
 
+function renderLoginUnitOptions(units){
+  const el=$("loginUnit");
+  if(!el || !Array.isArray(units) || !units.length) return;
+  const valid=units.filter(u=>u && String(u.name||"").trim()).map((u,i)=>({
+    group:u.group||i+1,
+    name:String(u.name).trim()
+  }));
+  if(!valid.length) return;
+  const selected=el.value;
+  el.innerHTML=`<option value="">Select your deployment unit</option>`+
+    valid.map(u=>`<option value="${esc(u.name)}">Unit ${esc(u.group)} — ${esc(u.name)}</option>`).join("");
+  if(selected && valid.some(u=>u.name===selected)) el.value=selected;
+}
+
 async function populateLoginUnits(){
   const el=$("loginUnit");
   if(!el) return;
+
+  // Render the embedded cemetery directory immediately so the Staff Login modal
+  // never waits for the Apps Script round-trip before becoming usable.
+  renderLoginUnitOptions(LOCAL_UNITS);
+
   if(navigator.onLine===false){
     try{
       const c=await getOfflineLoginUnits();
-      const units=c?.data?.length?c.data:LOCAL_UNITS;
-      el.innerHTML=`<option value="">Select your deployment unit</option>`+units.map(u=>`<option value="${esc(u.name)}">Unit ${esc(u.group)} — ${esc(u.name)}</option>`).join("");
-      return;
+      if(c?.data?.length) renderLoginUnitOptions(c.data);
     }catch(e){}
+    return;
   }
+
   try{
     const d=await apiGet("unitsForLogin");
-    const units=(d.units||[]);
-    el.innerHTML=`<option value="">Select your deployment unit</option>` +
-      units.map(u=>`<option value="${esc(u.name)}">Unit ${esc(u.group)} — ${esc(u.name)}</option>`).join("");
-    await putOfflineRecord(OFFLINE_CACHE_STORE,{key:"LOGIN_UNITS",savedAt:Date.now(),data:units});
+    const units=Array.isArray(d.units)&&d.units.length?d.units:LOCAL_UNITS;
+    renderLoginUnitOptions(units);
+    try{await putOfflineRecord(OFFLINE_CACHE_STORE,{key:"LOGIN_UNITS",savedAt:Date.now(),data:units});}catch(e){}
   }catch(e){
+    // Keep the embedded cemetery list available if the network/API is slow or unavailable.
     try{
       const c=await getOfflineLoginUnits();
-      const units=c?.data?.length?c.data:LOCAL_UNITS;
-      el.innerHTML=`<option value="">Select your deployment unit</option>`+units.map(u=>`<option value="${esc(u.name)}">Unit ${esc(u.group)} — ${esc(u.name)}</option>`).join("");
-    }catch(err){
-      el.innerHTML=`<option value="">Select your deployment unit</option>` + LOCAL_UNITS.map(u=>`<option value="${esc(u.name)}">Unit ${u.group} — ${esc(u.name)}</option>`).join("");
-    }
+      if(c?.data?.length) renderLoginUnitOptions(c.data);
+    }catch(err){}
   }
 }
 
-async function openLogin(){
+function openLogin(){
   $("loginMessage").classList.remove("show");
   $("loginForm").reset();
-  await populateLoginUnits();
   setLoginRole("TEAM_LEADER");
   const note=$("offlineLoginNote");
   if(note) note.innerHTML=navigator.onLine===false?"📵 <strong>Offline mode:</strong> use the same credentials you previously used on this device. New devices must login once online.":"📶 <strong>Offline login:</strong> available on this device after at least one successful online login. Offline data is the last synchronized copy.";
+  // Open immediately; network-based unit refresh continues in the background.
   openModal("loginModal");
+  renderLoginUnitOptions(LOCAL_UNITS);
   $("loginUnit").focus();
+  void populateLoginUnits();
 }
 
 $("loginBtn").addEventListener("click",openLogin);
@@ -1384,8 +1419,7 @@ function renderUnitConnectivity(){
     const label=isOnline?"ONLINE":"OFFLINE";
     const note=mine?"YOUR UNIT":"";
     return `<div class="unit-connectivity-item${mine?' mine':''}">
-      <div class="unit-connectivity-top"><span class="unit-connectivity-unit">UNIT ${String(i+1).padStart(2,'0')}</span><span class="unit-connectivity-badge ${isOnline?'online':'offline'}">● ${label}</span></div>
-      <div class="unit-connectivity-name">${esc(name)}</div>
+      <div class="unit-connectivity-top"><span class="unit-connectivity-unit" title="${esc(name)}">${esc(name)}</span><span class="unit-connectivity-badge ${isOnline?'online':'offline'}">● ${label}</span></div>
       ${note?`<div class="unit-connectivity-note">🔒 ${note}</div>`:""}
     </div>`;
   }).join("");
@@ -1413,8 +1447,8 @@ function renderAdminDashboard(){
     </div>
     <div class="card"><div class="section-head"><div><h2>Unit Snapshot</h2><p>Click any unit to view its personnel, duty and reports.</p></div></div>
       <div class="public-units">${d.units.map((u,i)=>`<div class="unit-card" onclick="adminOpenUnit(${i})" style="cursor:pointer">
-        <div class="u-group">Deployment Unit ${i+1}</div><h3>${esc(u["Cemetery / Post"] || "")}</h3>
-        <div class="unit-meta"><div><span>Reports</span><b>${u["Total Reports"]||0}</b></div><div><span>Persons</span><b>${u["Total Persons"]||0}</b></div><div><span>Patients</span><b>${u.totalPatientRecords||0}</b></div></div>
+        <h3 class="unit-snapshot-name">${esc(String(u.cemetery || u["Cemetery / Post"] || ((LOCAL_UNITS.find(x=>Number(x.group)===Number(u.Group||u.group))||{}).name) || ((LOCAL_UNITS[i]||{}).name) || ("Deployment Unit "+(i+1))) )}</h3>
+        <div class="unit-meta"><div><span>Reports</span><b>${u.totalReports ?? u["Total Reports"] ?? 0}</b></div><div><span>Persons</span><b>${u.totalPersons ?? u["Total Persons"] ?? 0}</b></div><div><span>Patients</span><b>${u.totalPatientRecords||0}</b></div></div>
       </div>`).join("")}</div>
     </div><div id="unitConnectivity"></div>`;
   renderUnitConnectivity();
@@ -1539,7 +1573,7 @@ function renderAdminUnitDetail(){
   const backBtn='<button type="button" class="btn" onclick="navigate(&quot;unit&quot;)">← All Deployment Units</button>';
   $("unitPage").innerHTML=`
     <div class="section-head">
-      <div><div class="u-group">Deployment Unit ${esc(u.group||"")}</div><h2>${esc(u.name||"")}</h2><p>${esc((u.covered||[]).join(" • "))}</p></div>
+      <div><div class="u-group">Cemetery / Post</div><h2>${esc(u.name||"")}</h2><p>${esc((u.covered||[]).join(" • "))}</p></div>
       <div>${backBtn}</div>
     </div>
     <div class="kpis">
