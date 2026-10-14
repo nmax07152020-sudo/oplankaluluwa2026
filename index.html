@@ -1086,12 +1086,22 @@ window.addEventListener("online",()=>{renderUnitConnectivity();});
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible") syncPendingReports();});
 setInterval(()=>syncPendingReports(),30000);
 
+async function parseApiJsonResponse(response, actionLabel) {
+  const raw = await response.text();
+  let data;
+  try { data = JSON.parse(raw); }
+  catch (err) {
+    const preview = String(raw || '').replace(/\s+/g,' ').slice(0,160);
+    throw new Error(`${actionLabel}: Google Apps Script did not return JSON (HTTP ${response.status}). Check Web App deployment/access. Response: ${preview || '(empty response)'}`);
+  }
+  if (!response.ok) throw new Error(`${actionLabel}: HTTP ${response.status}${data.error ? ' — ' + data.error : ''}`);
+  if (!data.ok) throw new Error(data.error || `${actionLabel}: Request failed.`);
+  return data;
+}
 async function apiGet(action, params={}) {
   const q = new URLSearchParams({action, ...params});
   const r = await fetch(API_URL + "?" + q.toString(), {cache:"no-store"});
-  const data = await r.json();
-  if (!data.ok) throw new Error(data.error || "Request failed.");
-  return data;
+  return await parseApiJsonResponse(r, `GET ${action}`);
 }
 async function apiPost(action, data={}, auth=true) {
   const r = await fetch(API_URL, {
@@ -1099,9 +1109,7 @@ async function apiPost(action, data={}, auth=true) {
     headers:{"Content-Type":"text/plain;charset=utf-8"},
     body:JSON.stringify({action,data,token:auth ? token : undefined})
   });
-  const out = await r.json();
-  if (!out.ok) throw new Error(out.error || "Request failed.");
-  return out;
+  return await parseApiJsonResponse(r, `POST ${action}`);
 }
 
 function openModal(id){$(id).classList.add("show")}
@@ -1455,6 +1463,8 @@ let attendanceSelectedUnit = 'ALL';
 let attendanceLoadedOnce = false;
 let attendanceSyncInFlight = false;
 let attendancePhotoPreviewUrls = {in:'',out:''};
+// Keep sync diagnostics visible across Attendance page re-renders.
+let attendanceSyncNotice = {text:'Ready. Photos and attendance will be stored locally before sync.', tone:'info'};
 function localAttendanceDate(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function attendanceUnitList(){
   const raw=currentUser?.role==='ADMIN'?(adminData?.units||[]):(currentUnitData?.unit?[{Group:currentUnitData.unit.group,'Cemetery / Post':currentUnitData.unit.name,Status:currentUnitData.unit.status}]:[]);
@@ -1541,11 +1551,29 @@ async function syncOneAttendance(record){
   await putLocalAttendance(updated);return updated;
 }
 async function syncPendingAttendance(){
-  if(attendanceSyncInFlight||!currentUser||!token||isOfflineSession||navigator.onLine===false)return {synced:0,pending:0};
-  attendanceSyncInFlight=true;let synced=0;
-  try{const all=await getAllLocalAttendance();for(const row of all){if(row.localStatus==='SYNCED')continue;if(currentUser.role==='TEAM_LEADER'&&String(row.unit)!==String(currentUser.unit))continue;try{await syncOneAttendance(row);synced++;}catch(e){if(isNetworkError(e))break;row.syncError=String(e.message||e);row.localStatus='PENDING_SYNC';await putLocalAttendance(row);}}}
-  finally{attendanceSyncInFlight=false;}
-  return {synced,pending:(await getAllLocalAttendance()).filter(r=>r.localStatus!=='SYNCED'&&(currentUser.role==='ADMIN'||r.unit===currentUser.unit)).length};
+  const allBefore=await getAllLocalAttendance().catch(()=>[]);
+  const pendingBefore=allBefore.filter(r=>r.localStatus!=='SYNCED'&&(currentUser?.role==='ADMIN'||r.unit===currentUser?.unit)).length;
+  if(attendanceSyncInFlight)return {synced:0,pending:pendingBefore,errors:['A sync attempt is already in progress. Wait a moment and retry.']};
+  if(!currentUser||!token)return {synced:0,pending:pendingBefore,errors:['No authenticated session. Sign in again while online.']};
+  if(isOfflineSession)return {synced:0,pending:pendingBefore,errors:['This is an OFFLINE MODE login session. Log out and sign in again with internet so the server can issue an online session.']};
+  if(navigator.onLine===false)return {synced:0,pending:pendingBefore,errors:['The browser reports that this device is offline.']};
+  attendanceSyncInFlight=true;let synced=0;const errors=[];
+  try{
+    const all=await getAllLocalAttendance();
+    for(const row of all){
+      if(row.localStatus==='SYNCED')continue;
+      if(currentUser.role==='TEAM_LEADER'&&String(row.unit)!==String(currentUser.unit))continue;
+      try{await syncOneAttendance(row);synced++;}
+      catch(e){
+        const message=String(e?.message||e||'Unknown sync error');
+        row.syncError=message;row.localStatus='PENDING_SYNC';await putLocalAttendance(row);
+        errors.push(`${row.attendanceId||'Attendance'}: ${message}`);
+        if(isNetworkError(e))break;
+      }
+    }
+  } finally {attendanceSyncInFlight=false;}
+  const pending=(await getAllLocalAttendance()).filter(r=>r.localStatus!=='SYNCED'&&(currentUser.role==='ADMIN'||r.unit===currentUser.unit)).length;
+  return {synced,pending,errors};
 }
 async function saveAttendanceEvent(side){
   const button=$(side==='IN'?'attendanceSaveIn':'attendanceSaveOut');if(!button||button.disabled)return;
@@ -1578,7 +1606,7 @@ async function saveAttendanceEvent(side){
     const preview=$(side==='IN'?'attendancePreviewIn':'attendancePreviewOut');if(preview){preview.removeAttribute('src');preview.classList.remove('show');}
     let syncMessage='Saved on this device. Pending server sync.';
     if(navigator.onLine!==false&&!isOfflineSession){try{record=await syncOneAttendance(record);syncMessage='Saved locally and synced to the server.';}catch(syncErr){record.localStatus='PENDING_SYNC';record.syncError=String(syncErr.message||syncErr);await putLocalAttendance(record);syncMessage=`Saved on this device; server sync pending (${syncErr.message||'network unavailable'}).`;}}
-    $('attendanceActionStatus').innerHTML=`<b>${side==='IN'?'TIME IN':'TIME OUT'}:</b> ${esc(syncMessage)} <span class="attendance-status ${record.localStatus==='SYNCED'?'synced':'pending'}">${attendanceStatus(record)}</span>`;
+    attendanceSyncNotice={text:`${side==='IN'?'TIME IN':'TIME OUT'}: ${syncMessage} Status: ${attendanceStatus(record)}${record.syncError?' · Error: '+record.syncError:''}`,tone:record.localStatus==='SYNCED'?'online':(record.syncError?'error':'pending')};
     await renderAttendancePage();
   }catch(err){alert(err.message||String(err));}
   finally{button.disabled=false;button.textContent=oldText;}
@@ -1595,7 +1623,7 @@ async function renderAttendancePage(){
   const localOnly=records.filter(r=>r.localStatus!=='SYNCED').length;
   const formsAllowed=!!units.length;
   page.innerHTML=`
-    <div class="section-head"><div><h2>📸 Attendance Photo Proof</h2><p>Group photo, Time In/Out, GPS if available, and offline-first saving.</p></div><div class="actions"><button type="button" class="btn" onclick="refreshAttendance()">↻ Refresh</button><button type="button" class="btn primary" onclick="syncPendingAttendance().then(()=>renderAttendancePage())">☁ Sync Pending</button></div></div>
+    <div class="section-head"><div><h2>📸 Attendance Photo Proof</h2><p>Group photo, Time In/Out, GPS if available, and offline-first saving.</p></div><div class="actions"><button type="button" class="btn" onclick="renderAttendancePage()">↻ Refresh View</button><button type="button" class="btn primary" onclick="manuallyTestServerAndSync()">☁ Test Server + Sync</button></div></div>
     <div class="mini-cards" style="margin-bottom:12px"><div class="mini"><span>Visible Records</span><b>${visibleRecords.length}</b></div><div class="mini"><span>Time In Saved</span><b>${visibleRecords.filter(r=>r.timeInDeviceAt).length}</b></div><div class="mini"><span>Shift Completed</span><b>${visibleRecords.filter(r=>r.timeOutDeviceAt).length}</b></div><div class="mini"><span>Pending Sync</span><b>${records.filter(r=>r.localStatus!=='SYNCED').length}</b></div></div>
     ${unitsNav}
     ${isAdmin&&selectedUnit==='ALL'?`<div class="public-units" style="margin-bottom:14px">${units.map(u=>{const rows=records.filter(r=>r.unit===u.name);return `<div class="unit-card"><div class="u-group">Cemetery / Deployment Unit ${u.group}</div><h3>${esc(u.name)}</h3><div class="attendance-unit-metrics"><div><span>Records</span><b>${rows.length}</b></div><div><span>Time In</span><b>${rows.filter(r=>r.timeInDeviceAt).length}</b></div><div><span>Completed</span><b>${rows.filter(r=>r.timeOutDeviceAt).length}</b></div></div><button type="button" class="btn primary" onclick="selectAttendanceUnit(${JSON.stringify(u.name)})">View Attendance</button></div>`;}).join('')}</div>`:''}
@@ -1612,7 +1640,7 @@ async function renderAttendancePage(){
         <div class="attendance-photo-box"><b style="font-size:10px">📷 Time In Group Photo *</b><p style="font-size:8px;color:var(--muted);line-height:1.45">Kunan ng isang malinaw na group photo ang mga personnel sa assigned cemetery/post.</p><input id="attendancePhotoIn" type="file" accept="image/*" capture="environment"><img id="attendancePreviewIn" class="attendance-preview" alt="Time In photo preview"><div class="field" style="margin-top:8px"><label>Time In remarks</label><textarea id="attendanceRemarksIn" rows="2" placeholder="Optional remarks"></textarea></div><button type="button" id="attendanceSaveIn" class="btn primary" style="margin-top:8px" onclick="saveAttendanceEvent('IN')">📸 Save TIME IN + Photo</button></div>
         <div class="attendance-photo-box"><b style="font-size:10px">📷 Time Out Group Photo *</b><p style="font-size:8px;color:var(--muted);line-height:1.45">Kumuha ng bagong photo proof sa pagtatapos ng shift. Kailangan munang may Time In record.</p><input id="attendancePhotoOut" type="file" accept="image/*" capture="environment"><img id="attendancePreviewOut" class="attendance-preview" alt="Time Out photo preview"><div class="field" style="margin-top:8px"><label>Time Out remarks</label><textarea id="attendanceRemarksOut" rows="2" placeholder="Optional remarks"></textarea></div><button type="button" id="attendanceSaveOut" class="btn" style="margin-top:8px" onclick="saveAttendanceEvent('OUT')">📸 Save TIME OUT + Photo</button></div>
       </div>
-      <div id="attendanceActionStatus" class="offline-sync-status" style="margin-top:12px">Ready. Photos and attendance will be stored locally before sync.</div>
+      <div id="attendanceActionStatus" class="offline-sync-status ${esc(attendanceSyncNotice.tone||'info')}" style="margin-top:12px;overflow-wrap:anywhere">${esc(attendanceSyncNotice.text||'Ready. Photos and attendance will be stored locally before sync.')}</div>
     </div>
     <div class="card"><div class="section-head"><div><h2>${selectedUnit==='ALL'?'All Unit Attendance Records':esc(selectedUnit)}</h2><p>View timestamps, photo proof, GPS capture availability, and sync status.</p></div></div><div id="attendanceRecordList" class="grid" style="gap:9px">${visibleRecords.length?visibleRecords.map(renderAttendanceRecordCard).join(''):'<div class="notice">No attendance records for this view yet.</div>'}</div></div>`;
   if(isAdmin){page.querySelectorAll('[data-att-unit]').forEach(btn=>btn.addEventListener('click',()=>selectAttendanceUnit(btn.dataset.attUnit)));}
@@ -1631,7 +1659,29 @@ function renderAttendanceRecordCard(r){
   return `<article class="attendance-record"><div class="attendance-record-head"><div><div class="attendance-record-title">${esc(r.unit||'Unknown unit')}</div><div class="attendance-record-meta">${esc(r.dutyDate||'')} · ${esc(r.shiftId||'')} ${esc(r.shiftLabel||'')}<br>Team Leader: ${esc(r.teamLeader||'-')}<br>Personnel: ${esc((r.personnelPresent||[]).join(', ')||'-')}</div></div><span class="attendance-status ${status}">${esc(attendanceStatus(r))}</span></div><div class="mini-cards"><div class="mini"><span>Time In (device)</span><b style="font-size:10px">${esc(r.timeInDeviceAt?new Date(r.timeInDeviceAt).toLocaleString():'—')}</b></div><div class="mini"><span>Time Out (device)</span><b style="font-size:10px">${esc(r.timeOutDeviceAt?new Date(r.timeOutDeviceAt).toLocaleString():'—')}</b></div><div class="mini"><span>Location</span><b style="font-size:10px">${esc(gps)}</b></div></div><div class="attendance-record-actions">${photoButtons||'<span class="attendance-record-meta">Photo buttons appear after photo proof is saved.</span>'}</div></article>`;
 }
 async function selectAttendanceUnit(unit){attendanceSelectedUnit=String(unit||'ALL');await renderAttendancePage();}
-async function refreshAttendance(){const st=$('attendanceActionStatus');if(st)st.textContent='Refreshing attendance…';await syncPendingAttendance().catch(()=>{});await renderAttendancePage();}
+async function refreshAttendance(){
+  attendanceSyncNotice={text:'Refreshing attendance and checking pending sync…',tone:'info'};
+  await renderAttendancePage();
+  await manuallyTestServerAndSync();
+}
+async function manuallyTestServerAndSync(){
+  attendanceSyncNotice={text:'Checking the deployed Attendance API…',tone:'info'};
+  await renderAttendancePage();
+  try{
+    const server=await apiGet('attendanceData',{token});
+    const result=await syncPendingAttendance();
+    if(result.errors?.length){
+      attendanceSyncNotice={text:`Server reachable. Synced ${result.synced}; pending ${result.pending}. Last error: ${result.errors[0]}`,tone:'error'};
+    }else if(result.pending>0){
+      attendanceSyncNotice={text:`Server reachable. Synced ${result.synced}; ${result.pending} record(s) remain pending. Press Test Server + Sync again or inspect local record errors.`,tone:'pending'};
+    }else{
+      attendanceSyncNotice={text:`Server connection OK. ${server.records?.length||0} attendance record(s) confirmed on server; no pending local records remain.`,tone:'online'};
+    }
+  }catch(e){
+    attendanceSyncNotice={text:`BACKEND CHECK FAILED: ${String(e?.message||e)}. Confirm latest Code.gs is deployed as a new Web App version, the API URL matches this deployment, and Attendance Photo Proof setup/permissions were completed.`,tone:'error'};
+  }
+  await renderAttendancePage();
+}
 async function loadAttendanceDashboardSummary(){
   const el=$('attendanceDashboardSummary');if(!el||!currentUser)return;
   const records=await readServerAttendance();const units=attendanceUnitList();
@@ -1650,7 +1700,7 @@ async function viewAttendancePhoto(attendanceId,side){
   }catch(e){$('attendancePhotoLoading').style.display='block';$('attendancePhotoLoading').textContent=e.message||'Unable to load protected photo.';}
 }
 window.addEventListener('online',()=>{syncPendingAttendance().then(()=>{if(currentUser&&currentPage==='attendance')renderAttendancePage().catch(()=>{});}).catch(()=>{});});
-setInterval(()=>{if(currentUser&&navigator.onLine!==false&&!isOfflineSession)syncPendingAttendance().then(r=>{if(r.synced&&currentPage==='attendance')renderAttendancePage().catch(()=>{});}).catch(()=>{});},45000);
+setInterval(()=>{if(currentUser&&navigator.onLine!==false&&!isOfflineSession)syncPendingAttendance().then(r=>{if(currentPage==='attendance'&&(r.synced||r.errors?.length)){if(r.errors?.length)attendanceSyncNotice={text:`Automatic sync: ${r.synced} synced; ${r.pending} pending. Error: ${r.errors[0]}`,tone:'error'};else attendanceSyncNotice={text:`Automatic sync successful: ${r.synced} attendance record(s) synchronized; ${r.pending} pending.`,tone:r.pending?'pending':'online'};renderAttendancePage().catch(()=>{});}}).catch(e=>{if(currentPage==='attendance'){attendanceSyncNotice={text:`Automatic sync failed: ${String(e?.message||e)}`,tone:'error'};renderAttendancePage().catch(()=>{});}});},45000);
 
 function renderUnitConnectivity(){
   const box=$("unitConnectivity");
