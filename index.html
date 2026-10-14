@@ -2912,7 +2912,9 @@ function chatInitials(name){return String(name||"User").trim().split(/\s+/).slic
 function getStableChatKey(user){
   if(!user) return "user";
   const role=String(user.role||"USER").trim().toUpperCase();
-  const identity=role==="ADMIN" ? String(user.username||user.fullName||"admin").trim() : String(user.unit||user.username||user.fullName||"teamleader").trim();
+  // Each account must have its own chat identity. Unit-first identity made
+  // multiple Team Leaders assigned to the same unit collide in the same thread.
+  const identity=String(user.username||user.fullName||user.unit||(role==="ADMIN"?"admin":"teamleader")).trim().toLowerCase();
   return encodeURIComponent(role+"::"+identity);
 }
 function chatIdFor(a,b){return [String(a||""),String(b||"")].sort().join("__");}
@@ -3083,9 +3085,16 @@ function openFirebaseChat(chatKey){
   };
   const onChanged=snap=>{firebaseMessageCache.set(snap.key,{id:snap.key,...(snap.val()||{})});renderFirebaseMessages(Array.from(firebaseMessageCache.values()));};
   const onRemoved=snap=>{firebaseMessageCache.delete(snap.key);renderFirebaseMessages(Array.from(firebaseMessageCache.values()));};
-  messagesRef.on("child_added",onAdded,err=>console.error("Firebase child_added failed",err));
-  messagesRef.on("child_changed",onChanged,err=>console.error("Firebase child_changed failed",err));
-  messagesRef.on("child_removed",onRemoved,err=>console.error("Firebase child_removed failed",err));
+  const showChatReadError=err=>{
+    console.error("Firebase chat listener failed",err);
+    const box=$("firebaseChatMessages");
+    if(box) box.innerHTML=`<div class="chat-empty" style="color:#a73535">Unable to load live messages.<br><small>${esc(err?.message||err||"Check Firebase Realtime Database read rules and authentication.")}</small></div>`;
+    const status=$("firebaseChatStatus");
+    if(status) status.innerHTML='<span class="chat-online-dot offline"></span>CHAT ERROR';
+  };
+  messagesRef.on("child_added",onAdded,showChatReadError);
+  messagesRef.on("child_changed",onChanged,showChatReadError);
+  messagesRef.on("child_removed",onRemoved,showChatReadError);
 
   firebaseSeenRef=metaRef.child(`seenAt/${targetChatKey}`);
   firebaseSeenRef.on("value",snap=>{firebaseTargetSeenAt=Number(snap.val()||0);renderFirebaseMessages(Array.from(firebaseMessageCache.values()));});
@@ -3169,7 +3178,12 @@ async function sendFirebaseChatMessage(e){
     if(!verify.exists()) throw new Error("Message was sent but could not be read back from Firebase.");
     await incrementUnread(targetChatKey,myChatKey);
     input.value="";
-  }catch(err){alert("Unable to send message: "+(err.message||err));}
+  }catch(err){
+    console.error("Firebase message send failed",err);
+    const box=$("firebaseChatMessages");
+    if(box){const note=document.createElement("div");note.className="chat-empty";note.style.color="#a73535";note.textContent="Message was not confirmed saved: "+(err?.message||err||"Firebase write/read permission error");box.appendChild(note);}
+    alert("Unable to save chat message. It may not have been stored in Firebase. Details: "+(err.message||err));
+  }
   finally{$("firebaseChatSend").disabled=false;input.focus();}
 }
 
