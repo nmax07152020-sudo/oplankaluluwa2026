@@ -409,7 +409,7 @@ button{cursor:pointer}
 .unit-connectivity-item{border:1px solid var(--line);background:#fff;border-radius:12px;padding:9px;min-width:0;position:relative}
 .unit-connectivity-item.mine{box-shadow:inset 0 0 0 1px #b9dfff}
 .unit-connectivity-top{display:flex;align-items:center;justify-content:space-between;gap:7px}
-.unit-connectivity-unit{font-size:8px;font-weight:900;color:#0b66bf}
+.unit-connectivity-unit{display:block;flex:1;min-width:0;font-size:8px;font-weight:900;line-height:1.3;color:#0b66bf;overflow-wrap:anywhere}
 .unit-connectivity-badge{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:4px 7px;font-size:7px;font-weight:900;white-space:nowrap}
 .unit-connectivity-badge.online{background:#e8f8f0;color:#087d50}
 .unit-connectivity-badge.offline{background:#f1f4f7;color:#7a8797}
@@ -419,6 +419,37 @@ button{cursor:pointer}
 @media(max-width:1100px){.unit-connectivity-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:780px){.unit-connectivity-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){.unit-connectivity-grid{grid-template-columns:1fr}.unit-connectivity-item{padding:10px}}
+</style>
+<style id="unit-snapshot-cemetery-name-fix">
+/* Unit Snapshot: show each real cemetery name as the card title, not the field label. */
+.unit-snapshot-name{font-size:13px!important;line-height:1.35!important;margin:0 0 12px!important;overflow-wrap:anywhere;position:relative;z-index:1;text-transform:none!important;letter-spacing:normal!important;color:var(--text)!important}
+</style>
+
+<style id="compact-staff-login-fields-v1">
+/* Keep the staff login form compact instead of stretching credential boxes too wide. */
+#loginForm > .field{width:100%;max-width:320px;margin-left:auto;margin-right:auto;min-width:0}
+#loginForm > .field input,
+#loginForm > .field select{width:100%;max-width:100%;min-width:0}
+#loginForm > #loginSubmit{width:100%;max-width:320px;justify-self:center}
+@media(max-width:480px){
+  #loginForm > .field,
+  #loginForm > #loginSubmit{max-width:100%}
+}
+</style>
+
+<style id="compact-staff-login-fields">
+/* Keep Staff Login credential boxes compact on desktop and mobile. */
+#loginForm > .field input,
+#loginForm > .field select {
+  width: 100%;
+  max-width: 320px;
+  min-width: 0;
+}
+#loginForm > .field { justify-items: start; }
+@media (max-width: 420px) {
+  #loginForm > .field input,
+  #loginForm > .field select { max-width: 100%; }
+}
 </style>
 </head>
 <body>
@@ -1199,43 +1230,61 @@ function setLoginRole(role){
   }
 }
 
+function renderLoginUnitOptions(units){
+  const el=$("loginUnit");
+  if(!el || !Array.isArray(units) || !units.length) return;
+  const valid=units.filter(u=>u && String(u.name||"").trim()).map((u,i)=>({
+    group:u.group||i+1,
+    name:String(u.name).trim()
+  }));
+  if(!valid.length) return;
+  const selected=el.value;
+  el.innerHTML=`<option value="">Select your deployment unit</option>`+
+    valid.map(u=>`<option value="${esc(u.name)}">Unit ${esc(u.group)} — ${esc(u.name)}</option>`).join("");
+  if(selected && valid.some(u=>u.name===selected)) el.value=selected;
+}
+
 async function populateLoginUnits(){
   const el=$("loginUnit");
   if(!el) return;
+
+  // Render the embedded cemetery directory immediately so the Staff Login modal
+  // never waits for the Apps Script round-trip before becoming usable.
+  renderLoginUnitOptions(LOCAL_UNITS);
+
   if(navigator.onLine===false){
     try{
       const c=await getOfflineLoginUnits();
-      const units=c?.data?.length?c.data:LOCAL_UNITS;
-      el.innerHTML=`<option value="">Select your deployment unit</option>`+units.map(u=>`<option value="${esc(u.name)}">Unit ${esc(u.group)} — ${esc(u.name)}</option>`).join("");
-      return;
+      if(c?.data?.length) renderLoginUnitOptions(c.data);
     }catch(e){}
+    return;
   }
+
   try{
     const d=await apiGet("unitsForLogin");
-    const units=(d.units||[]);
-    el.innerHTML=`<option value="">Select your deployment unit</option>` +
-      units.map(u=>`<option value="${esc(u.name)}">Unit ${esc(u.group)} — ${esc(u.name)}</option>`).join("");
-    await putOfflineRecord(OFFLINE_CACHE_STORE,{key:"LOGIN_UNITS",savedAt:Date.now(),data:units});
+    const units=Array.isArray(d.units)&&d.units.length?d.units:LOCAL_UNITS;
+    renderLoginUnitOptions(units);
+    try{await putOfflineRecord(OFFLINE_CACHE_STORE,{key:"LOGIN_UNITS",savedAt:Date.now(),data:units});}catch(e){}
   }catch(e){
+    // Keep the embedded cemetery list available if the network/API is slow or unavailable.
     try{
       const c=await getOfflineLoginUnits();
-      const units=c?.data?.length?c.data:LOCAL_UNITS;
-      el.innerHTML=`<option value="">Select your deployment unit</option>`+units.map(u=>`<option value="${esc(u.name)}">Unit ${esc(u.group)} — ${esc(u.name)}</option>`).join("");
-    }catch(err){
-      el.innerHTML=`<option value="">Select your deployment unit</option>` + LOCAL_UNITS.map(u=>`<option value="${esc(u.name)}">Unit ${u.group} — ${esc(u.name)}</option>`).join("");
-    }
+      if(c?.data?.length) renderLoginUnitOptions(c.data);
+    }catch(err){}
   }
 }
 
-async function openLogin(){
+function openLogin(){
   $("loginMessage").classList.remove("show");
   $("loginForm").reset();
-  await populateLoginUnits();
   setLoginRole("TEAM_LEADER");
   const note=$("offlineLoginNote");
   if(note) note.innerHTML=navigator.onLine===false?"📵 <strong>Offline mode:</strong> use the same credentials you previously used on this device. New devices must login once online.":"📶 <strong>Offline login:</strong> available on this device after at least one successful online login. Offline data is the last synchronized copy.";
+  // Open immediately; network-based unit refresh continues in the background.
   openModal("loginModal");
+  renderLoginUnitOptions(LOCAL_UNITS);
   $("loginUnit").focus();
+  void populateLoginUnits();
 }
 
 $("loginBtn").addEventListener("click",openLogin);
@@ -1274,7 +1323,6 @@ $("loginForm").addEventListener("submit",async e=>{
     showPrivateApp();
     await loadRoleData();
     await syncPendingReports();
-    await syncPendingAttendance().catch(()=>{});
     navigate("dashboard");
     if(!isOfflineSession) await initFirebaseChat();
     else await setOfflineSyncStatus("pending","● OFFLINE — You are using the last synchronized dashboard data");
@@ -1465,7 +1513,7 @@ function renderAttendanceRoster(){
   const unit=currentAttendanceUnit(), shift=$('attendanceShift')?.value||'S1';
   const target=$('attendanceRoster'); if(!target)return;
   const names=attendanceRosterFor(unit.name,shift);
-  target.innerHTML=names.length?names.map((n,i)=>`<label><input type="checkbox" class="attendance-person-check" value="${esc(n)}"><span>${esc(n)}</span></label>`).join(''):'<div class="notice" style="grid-column:1/-1">Walang naka-assign na pangalan para sa shift na ito sa duty schedule. Ilagay ang personnel names sa field sa ibaba.</div>';
+  target.innerHTML=names.length?names.map((n,i)=>`<label><input type="checkbox" class="attendance-person-check" value="${esc(n)}" checked><span>${esc(n)}</span></label>`).join(''):'<div class="notice" style="grid-column:1/-1">Walang naka-assign na pangalan para sa shift na ito sa duty schedule. Ilagay ang personnel names sa field sa ibaba.</div>';
 }
 function attendanceSelectedPeople(){return [...document.querySelectorAll('.attendance-person-check:checked')].map(e=>e.value).concat(String($('attendanceExtraPeople')?.value||'').split(/[;,\n]/).map(x=>x.trim()).filter(Boolean)).filter((x,i,a)=>x&&a.indexOf(x)===i);}
 function photoToCompressedDataUrl(file,maxSide=1280,quality=.68){
@@ -1479,10 +1527,10 @@ function photoToCompressedDataUrl(file,maxSide=1280,quality=.68){
 function attendanceGps(){
  return new Promise(resolve=>{
   if(!navigator.geolocation){resolve(null);return;}
-  navigator.geolocation.getCurrentPosition(pos=>resolve({latitude:pos.coords.latitude,longitude:pos.coords.longitude,accuracyMeters:pos.coords.accuracy||null,capturedAt:new Date().toISOString()}),()=>resolve(null),{enableHighAccuracy:true,timeout:1800,maximumAge:120000});
+  navigator.geolocation.getCurrentPosition(pos=>resolve({latitude:pos.coords.latitude,longitude:pos.coords.longitude,accuracyMeters:pos.coords.accuracy||null,capturedAt:new Date().toISOString()}),()=>resolve(null),{enableHighAccuracy:true,timeout:6500,maximumAge:60000});
  });
 }
-function attendanceStatus(r){return r.localStatus==='SYNCED'||(r.updatedAt&&(r.photoInFileId||r.photoOutFileId))?'SYNCED':(r.localStatus==='PENDING_SYNC'?'PENDING SYNC':'LOCAL ONLY');}
+function attendanceStatus(r){return r.localStatus==='SYNCED'?'SYNCED':(r.localStatus==='PENDING_SYNC'?'PENDING SYNC':'LOCAL ONLY');}
 async function syncOneAttendance(record){
   if(!currentUser||!token||navigator.onLine===false||isOfflineSession) throw new Error('Attendance sync is unavailable while offline or in offline session.');
   const payload={...record};
@@ -1495,7 +1543,7 @@ async function syncOneAttendance(record){
 async function syncPendingAttendance(){
   if(attendanceSyncInFlight||!currentUser||!token||isOfflineSession||navigator.onLine===false)return {synced:0,pending:0};
   attendanceSyncInFlight=true;let synced=0;
-  try{const all=await getAllLocalAttendance();for(const row of all){if(row.localStatus==='SYNCED')continue;if(row.ownerRole&&String(row.ownerRole)!==String(currentUser.role))continue;if(currentUser.role==='TEAM_LEADER'&&String(row.unit)!==String(currentUser.unit))continue;try{await syncOneAttendance(row);synced++;}catch(e){if(isNetworkError(e))break;row.syncError=String(e.message||e);row.localStatus='PENDING_SYNC';await putLocalAttendance(row);}}}
+  try{const all=await getAllLocalAttendance();for(const row of all){if(row.localStatus==='SYNCED')continue;if(currentUser.role==='TEAM_LEADER'&&String(row.unit)!==String(currentUser.unit))continue;try{await syncOneAttendance(row);synced++;}catch(e){if(isNetworkError(e))break;row.syncError=String(e.message||e);row.localStatus='PENDING_SYNC';await putLocalAttendance(row);}}}
   finally{attendanceSyncInFlight=false;}
   return {synced,pending:(await getAllLocalAttendance()).filter(r=>r.localStatus!=='SYNCED'&&(currentUser.role==='ADMIN'||r.unit===currentUser.unit)).length};
 }
@@ -1577,7 +1625,7 @@ async function renderAttendancePage(){
   if(known){if(known.remarksIn)$('attendanceRemarksIn').value=known.remarksIn;if(known.remarksOut)$('attendanceRemarksOut').value=known.remarksOut;if(known.personnelPresent?.length){const set=new Set(known.personnelPresent);document.querySelectorAll('.attendance-person-check').forEach(c=>c.checked=set.has(c.value));}}
 }
 function renderAttendanceRecordCard(r){
-  const isSynced=r.localStatus==='SYNCED'||(r.updatedAt&&(r.photoInFileId||r.photoOutFileId));const status=isSynced?'synced':'pending';
+  const status=r.localStatus==='SYNCED'?'synced':'pending';
   const gps=r.gpsIn?`GPS captured (${Number(r.gpsIn.accuracyMeters||0).toFixed(0)} m reported accuracy)`:'GPS not captured';
   const photoButtons=`${(r.photoInDataUrl||r.photoInFileId)?`<button type="button" class="btn" onclick='viewAttendancePhoto(${JSON.stringify(r.attendanceId)},"in")'>View Time In Photo</button>`:''}${(r.photoOutDataUrl||r.photoOutFileId)?`<button type="button" class="btn" onclick='viewAttendancePhoto(${JSON.stringify(r.attendanceId)},"out")'>View Time Out Photo</button>`:''}`;
   return `<article class="attendance-record"><div class="attendance-record-head"><div><div class="attendance-record-title">${esc(r.unit||'Unknown unit')}</div><div class="attendance-record-meta">${esc(r.dutyDate||'')} · ${esc(r.shiftId||'')} ${esc(r.shiftLabel||'')}<br>Team Leader: ${esc(r.teamLeader||'-')}<br>Personnel: ${esc((r.personnelPresent||[]).join(', ')||'-')}</div></div><span class="attendance-status ${status}">${esc(attendanceStatus(r))}</span></div><div class="mini-cards"><div class="mini"><span>Time In (device)</span><b style="font-size:10px">${esc(r.timeInDeviceAt?new Date(r.timeInDeviceAt).toLocaleString():'—')}</b></div><div class="mini"><span>Time Out (device)</span><b style="font-size:10px">${esc(r.timeOutDeviceAt?new Date(r.timeOutDeviceAt).toLocaleString():'—')}</b></div><div class="mini"><span>Location</span><b style="font-size:10px">${esc(gps)}</b></div></div><div class="attendance-record-actions">${photoButtons||'<span class="attendance-record-meta">Photo buttons appear after photo proof is saved.</span>'}</div></article>`;
@@ -1588,14 +1636,14 @@ async function loadAttendanceDashboardSummary(){
   const el=$('attendanceDashboardSummary');if(!el||!currentUser)return;
   const records=await readServerAttendance();const units=attendanceUnitList();
   if(currentUser.role==='ADMIN'){
-    el.innerHTML=`<div class="mini-cards"><div class="mini"><span>Total Attendance Records</span><b>${records.length}</b></div><div class="mini"><span>Time In Saved</span><b>${records.filter(r=>r.timeInDeviceAt).length}</b></div><div class="mini"><span>Time Out Saved</span><b>${records.filter(r=>r.timeOutDeviceAt).length}</b></div><div class="mini"><span>Pending Sync (on this device)</span><b>${records.filter(r=>r.localStatus!=='SYNCED').length}</b></div></div><div class="attendance-unit-nav">${units.map(u=>`<button type="button" onclick='attendanceSelectedUnit=${JSON.stringify(u.name)};navigate("attendance")'>Unit ${u.group} · ${esc(u.name)}</button>`).join('')}</div>`;
+    el.innerHTML=`<div class="mini-cards"><div class="mini"><span>Total Attendance Records</span><b>${records.length}</b></div><div class="mini"><span>Time In Saved</span><b>${records.filter(r=>r.timeInDeviceAt).length}</b></div><div class="mini"><span>Time Out Saved</span><b>${records.filter(r=>r.timeOutDeviceAt).length}</b></div><div class="mini"><span>Pending Sync (on this device)</span><b>${records.filter(r=>r.localStatus!=='SYNCED').length}</b></div></div><div class="attendance-unit-nav">${units.map(u=>`<button type="button" onclick='navigate("attendance");selectAttendanceUnit(${JSON.stringify(u.name)})'>Unit ${u.group} · ${esc(u.name)}</button>`).join('')}</div>`;
   }else{
     el.innerHTML=`<div class="mini-cards"><div class="mini"><span>Records</span><b>${records.length}</b></div><div class="mini"><span>Time In</span><b>${records.filter(r=>r.timeInDeviceAt).length}</b></div><div class="mini"><span>Time Out</span><b>${records.filter(r=>r.timeOutDeviceAt).length}</b></div><div class="mini"><span>Pending Sync</span><b>${records.filter(r=>r.localStatus!=='SYNCED').length}</b></div></div><div class="attendance-lock-note">🔒 Unit scope: ${esc(currentUser.unit)}. Open Attendance to capture new proof and review records.</div>`;
   }
 }
 async function viewAttendancePhoto(attendanceId,side){
   try{
-    $('attendancePhotoView').style.display='none';$('attendancePhotoLoading').style.display='block';$('attendancePhotoLoading').textContent='Loading protected photo proof…';openModal('attendancePhotoModal');
+    $('attendancePhotoView').style.display='none';$('attendancePhotoLoading').textContent='Loading protected photo proof…';openModal('attendancePhotoModal');
     const local=await getLocalAttendance(attendanceId).catch(()=>null);let src=side==='in'?(local?.photoInDataUrl||''):(local?.photoOutDataUrl||'');
     if(!src){if(!token||isOfflineSession||navigator.onLine===false)throw new Error('Photo is not available locally while offline. Connect to the internet to fetch the protected cloud copy.');const d=await apiGet('attendancePhoto',{token,attendanceId,side});src=`data:${d.mimeType||'image/jpeg'};base64,${d.base64}`;}
     $('attendancePhotoView').src=src;$('attendancePhotoView').style.display='block';$('attendancePhotoLoading').style.display='none';$('attendancePhotoTitle').textContent=`${side==='in'?'Time In':'Time Out'} Photo Proof`;
@@ -1632,8 +1680,7 @@ function renderUnitConnectivity(){
     const label=isOnline?"ONLINE":"OFFLINE";
     const note=mine?"YOUR UNIT":"";
     return `<div class="unit-connectivity-item${mine?' mine':''}">
-      <div class="unit-connectivity-top"><span class="unit-connectivity-unit">UNIT ${String(i+1).padStart(2,'0')}</span><span class="unit-connectivity-badge ${isOnline?'online':'offline'}">● ${label}</span></div>
-      <div class="unit-connectivity-name">${esc(name)}</div>
+      <div class="unit-connectivity-top"><span class="unit-connectivity-unit" title="${esc(name)}">${esc(name)}</span><span class="unit-connectivity-badge ${isOnline?'online':'offline'}">● ${label}</span></div>
       ${note?`<div class="unit-connectivity-note">🔒 ${note}</div>`:""}
     </div>`;
   }).join("");
@@ -1661,8 +1708,8 @@ function renderAdminDashboard(){
     </div>
     <div class="card"><div class="section-head"><div><h2>Unit Snapshot</h2><p>Click any unit to view its personnel, duty and reports.</p></div></div>
       <div class="public-units">${d.units.map((u,i)=>`<div class="unit-card" onclick="adminOpenUnit(${i})" style="cursor:pointer">
-        <div class="u-group">Deployment Unit ${i+1}</div><h3>${esc(u["Cemetery / Post"] || "")}</h3>
-        <div class="unit-meta"><div><span>Reports</span><b>${u["Total Reports"]||0}</b></div><div><span>Persons</span><b>${u["Total Persons"]||0}</b></div><div><span>Patients</span><b>${u.totalPatientRecords||0}</b></div></div>
+        <h3 class="unit-snapshot-name">${esc(String(u.cemetery || u["Cemetery / Post"] || ((LOCAL_UNITS.find(x=>Number(x.group)===Number(u.Group||u.group))||{}).name) || ((LOCAL_UNITS[i]||{}).name) || ("Deployment Unit "+(i+1))) )}</h3>
+        <div class="unit-meta"><div><span>Reports</span><b>${u.totalReports ?? u["Total Reports"] ?? 0}</b></div><div><span>Persons</span><b>${u.totalPersons ?? u["Total Persons"] ?? 0}</b></div><div><span>Patients</span><b>${u.totalPatientRecords||0}</b></div></div>
       </div>`).join("")}</div>
     </div><div id="unitConnectivity"></div>
     <div class="card" style="margin-top:14px"><div class="section-head"><div><h2>📸 Attendance Photo Proof</h2><p>Time In/Out and supporting photo evidence across all deployment units.</p></div><button type="button" class="btn primary" onclick="navigate('attendance')">Open Attendance</button></div><div id="attendanceDashboardSummary"><div class="notice">Loading attendance summary…</div></div></div>`;
@@ -1791,7 +1838,7 @@ function renderAdminUnitDetail(){
   const backBtn='<button type="button" class="btn" onclick="navigate(&quot;unit&quot;)">← All Deployment Units</button>';
   $("unitPage").innerHTML=`
     <div class="section-head">
-      <div><div class="u-group">Deployment Unit ${esc(u.group||"")}</div><h2>${esc(u.name||"")}</h2><p>${esc((u.covered||[]).join(" • "))}</p></div>
+      <div><div class="u-group">Cemetery / Post</div><h2>${esc(u.name||"")}</h2><p>${esc((u.covered||[]).join(" • "))}</p></div>
       <div>${backBtn}</div>
     </div>
     <div class="kpis">
