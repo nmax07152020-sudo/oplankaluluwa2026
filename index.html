@@ -1459,6 +1459,7 @@ function navigate(page){
 
 // Attendance Photo Proof: local-first records plus protected server sync.
 let attendanceServerRecords = [];
+let attendanceDeletedRecords = [];
 let attendanceSelectedUnit = 'ALL';
 let attendanceLoadedOnce = false;
 let attendanceSyncInFlight = false;
@@ -1482,16 +1483,58 @@ async function putLocalAttendance(record){
   await new Promise((resolve,reject)=>{const tx=db.transaction(ATTENDANCE_LOCAL_STORE,'readwrite');tx.objectStore(ATTENDANCE_LOCAL_STORE).put(record);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error||new Error('Cannot save attendance locally.'));});
 }
 async function getLocalAttendance(id){const db=await attendanceDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(ATTENDANCE_LOCAL_STORE,'readonly');const req=tx.objectStore(ATTENDANCE_LOCAL_STORE).get(id);req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>reject(req.error||new Error('Cannot read attendance locally.'));});}
+async function deleteLocalAttendance(id){
+  const db=await attendanceDb();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction(ATTENDANCE_LOCAL_STORE,'readwrite');
+    tx.objectStore(ATTENDANCE_LOCAL_STORE).delete(String(id));
+    tx.oncomplete=()=>resolve();
+    tx.onerror=()=>reject(tx.error||new Error('Cannot remove local attendance.'));
+  });
+}
+function attendanceMillis(value){
+  const n=Number(value); if(Number.isFinite(n)&&n>0)return n;
+  const parsed=Date.parse(String(value||'')); return Number.isFinite(parsed)?parsed:0;
+}
+function deletedAttendanceApplies(record,deletedRecords){
+  const tomb=(deletedRecords||[]).find(d=>String(d.attendanceId||'')===String(record.attendanceId||''));
+  if(!tomb)return false;
+  const deletedAt=attendanceMillis(tomb.deletedAt);
+  const createdAt=attendanceMillis(record.createdAt||record.updatedAt||record.timeInDeviceAt);
+  // New Time In captured after an Admin deletion is a fresh replacement, not a stale copy.
+  return !!deletedAt && (!createdAt || createdAt<=deletedAt);
+}
 function attendanceCacheKey(){return `ATTENDANCE_CACHE::${currentUser?.role||'NA'}::${currentUser?.role==='TEAM_LEADER'?String(currentUser.unit||''):'ALL'}`;}
 async function readServerAttendance(force=false){
-  let server=[];
+  let server=[]; let deletedRecords=[];
   if(currentUser&&token&&!isOfflineSession&&navigator.onLine!==false){
-    try{const d=await apiGet('attendanceData',{token});server=Array.isArray(d.records)?d.records:[];attendanceServerRecords=server;attendanceLoadedOnce=true;await putOfflineRecord(OFFLINE_CACHE_STORE,{key:attendanceCacheKey(),savedAt:Date.now(),data:server});}
-    catch(e){const c=await getOfflineRecord(OFFLINE_CACHE_STORE,attendanceCacheKey()).catch(()=>null);server=Array.isArray(c?.data)?c.data:attendanceServerRecords;}
+    try{
+      const d=await apiGet('attendanceData',{token});
+      server=Array.isArray(d.records)?d.records:[];
+      deletedRecords=Array.isArray(d.deletedRecords)?d.deletedRecords:[];
+      attendanceDeletedRecords=deletedRecords;
+      attendanceServerRecords=server;attendanceLoadedOnce=true;
+      await putOfflineRecord(OFFLINE_CACHE_STORE,{key:attendanceCacheKey(),savedAt:Date.now(),data:server,deletedRecords});
+    }catch(e){
+      const c=await getOfflineRecord(OFFLINE_CACHE_STORE,attendanceCacheKey()).catch(()=>null);
+      server=Array.isArray(c?.data)?c.data:attendanceServerRecords;
+      deletedRecords=Array.isArray(c?.deletedRecords)?c.deletedRecords:[];
+      attendanceDeletedRecords=deletedRecords;
+    }
   }else{
-    const c=await getOfflineRecord(OFFLINE_CACHE_STORE,attendanceCacheKey()).catch(()=>null);server=Array.isArray(c?.data)?c.data:attendanceServerRecords;
+    const c=await getOfflineRecord(OFFLINE_CACHE_STORE,attendanceCacheKey()).catch(()=>null);
+    server=Array.isArray(c?.data)?c.data:attendanceServerRecords;
+    deletedRecords=Array.isArray(c?.deletedRecords)?c.deletedRecords:[];
+    attendanceDeletedRecords=deletedRecords;
   }
-  const local=await getAllLocalAttendance().catch(()=>[]);
+  let local=await getAllLocalAttendance().catch(()=>[]);
+  if(deletedRecords.length){
+    for(const r of local){
+      if(currentUser?.role==='TEAM_LEADER'&&String(r.unit)!==String(currentUser.unit))continue;
+      if(deletedAttendanceApplies(r,deletedRecords))await deleteLocalAttendance(r.attendanceId).catch(()=>{});
+    }
+    local=await getAllLocalAttendance().catch(()=>[]);
+  }
   const map=new Map((server||[]).map(r=>[String(r.attendanceId),r]));
   for(const r of local){
     if(currentUser?.role==='TEAM_LEADER'&&String(r.unit)!==String(currentUser.unit)) continue;
@@ -1576,9 +1619,22 @@ async function syncPendingAttendance(){
     const before=await apiGet('attendanceData',{token});
     const beforeRows=Array.isArray(before.records)?before.records:[];
     const beforeIds=new Set(beforeRows.map(r=>String(r.attendanceId||'')));
+    const deletedRecords=Array.isArray(before.deletedRecords)?before.deletedRecords:[];
     const all=await getAllLocalAttendance();
     for(const row of all){
       if(!inScope(row))continue;
+      const priorDeletion=(deletedRecords||[]).find(d=>String(d.attendanceId||'')===String(row.attendanceId||''));
+      if(priorDeletion&&deletedAttendanceApplies(row,[priorDeletion])){await deleteLocalAttendance(row.attendanceId);continue;}
+      if(priorDeletion){
+        // If a fresh Time In was captured while offline without knowing of the deletion,
+        // give it a new ID rather than reusing the retired ID.
+        const retiredId=String(row.attendanceId||'');
+        const freshId=`${retiredId}-R${Date.now().toString(36).toUpperCase()}`;
+        await deleteLocalAttendance(retiredId);
+        row.attendanceId=freshId;
+        row.syncError='Assigned a fresh Attendance ID because the previous test record was deleted by Admin.';
+        await putLocalAttendance(row);
+      }
       if(row.localStatus==='SYNCED'&&!beforeIds.has(String(row.attendanceId||''))){
         row.localStatus='PENDING_SYNC';
         row.syncError='Local status was SYNCED, but this Attendance ID was not found on the server. Retrying safely.';
@@ -1596,11 +1652,14 @@ async function syncPendingAttendance(){
     // Fresh post-sync read. Never report the pre-sync record count as the final result.
     const after=await apiGet('attendanceData',{token});
     const afterRows=Array.isArray(after.records)?after.records:[];
+    const afterDeleted=Array.isArray(after.deletedRecords)?after.deletedRecords:[];
     serverCount=afterRows.length;
     const afterIds=new Set(afterRows.map(r=>String(r.attendanceId||'')));
     const localAfter=await getAllLocalAttendance();
     for(const row of localAfter){
-      if(!inScope(row)||row.localStatus!=='SYNCED')continue;
+      if(!inScope(row))continue;
+      if(deletedAttendanceApplies(row,afterDeleted)){await deleteLocalAttendance(row.attendanceId);continue;}
+      if(row.localStatus!=='SYNCED')continue;
       if(!afterIds.has(String(row.attendanceId||''))){
         row.localStatus='PENDING_SYNC';
         row.syncError='Server verification after sync did not find this Attendance ID. Local copy retained for retry.';
@@ -1623,9 +1682,19 @@ async function saveAttendanceEvent(side){
     const date=$('attendanceDutyDate').value,shiftId=$('attendanceShift').value;
     if(!date||!shiftId)throw new Error('Please select the duty date and shift.');
     const shift=(LOCAL_SHIFTS.find(s=>s.id===shiftId)||{}).period||shiftId;
-    const id=stableAttendanceId(unit.group,date,shiftId);
-    let record=await getLocalAttendance(id);
-    if(!record){const merged=await readServerAttendance();record=merged.find(r=>String(r.attendanceId)===id)||null;}
+    const baseId=stableAttendanceId(unit.group,date,shiftId);
+    let id=baseId;
+    let record=await getLocalAttendance(baseId);
+    if(!record){
+      const merged=await readServerAttendance();
+      record=merged.find(r=>String(r.unit||'')===String(unit.name)&&String(r.dutyDate||'')===String(date)&&String(r.shiftId||'')===String(shiftId))||null;
+    }
+    if(record) id=String(record.attendanceId||baseId);
+    else if((attendanceDeletedRecords||[]).some(d=>String(d.attendanceId||'')===baseId)) {
+      // Admin deleted a previous test. Use a new generation ID while leaving a tombstone
+      // for disconnected devices so their stale copies cannot resurrect the old record.
+      id=`${baseId}-R${Date.now().toString(36).toUpperCase()}`;
+    }
     const names=attendanceSelectedPeople();
     if(side==='IN'&&record?.timeInDeviceAt)throw new Error('May existing Time In na para sa unit/date/shift na ito. Gamitin ang Refresh/records muna para maiwasan ang duplicate.');
     if(side==='OUT'&&(!record||!record.timeInDeviceAt))throw new Error('Kailangang may Time In record muna. Kapag ibang device ang nag-Time In, mag-refresh online para makuha ang server record.');
@@ -1688,15 +1757,46 @@ async function renderAttendancePage(){
   for(const side of ['In','Out']){$(`attendancePhoto${side}`).addEventListener('change',e=>{const file=e.target.files?.[0],img=$(`attendancePreview${side}`);if(!file){img.classList.remove('show');img.removeAttribute('src');return;}if(attendancePhotoPreviewUrls[side==='In'?'in':'out'])URL.revokeObjectURL(attendancePhotoPreviewUrls[side==='In'?'in':'out']);attendancePhotoPreviewUrls[side==='In'?'in':'out']=URL.createObjectURL(file);img.src=attendancePhotoPreviewUrls[side==='In'?'in':'out'];img.classList.add('show');});}
   renderAttendanceRoster();
   // On a new shift selection, prefill names/remarks from a locally known record if available.
-  const id=stableAttendanceId(currentAttendanceUnit().group,$('attendanceDutyDate').value,$('attendanceShift').value);
-  const known=visibleRecords.find(r=>r.attendanceId===id);
+  const knownUnit=currentAttendanceUnit().name;
+  const knownDate=$('attendanceDutyDate').value;
+  const knownShift=$('attendanceShift').value;
+  const known=visibleRecords.find(r=>String(r.unit||'')===String(knownUnit)&&String(r.dutyDate||'')===String(knownDate)&&String(r.shiftId||'')===String(knownShift));
   if(known){if(known.remarksIn)$('attendanceRemarksIn').value=known.remarksIn;if(known.remarksOut)$('attendanceRemarksOut').value=known.remarksOut;if(known.personnelPresent?.length){const set=new Set(known.personnelPresent);document.querySelectorAll('.attendance-person-check').forEach(c=>c.checked=set.has(c.value));}}
+  scheduleAttendanceAutoSync('Attendance page opened');
 }
 function renderAttendanceRecordCard(r){
   const status=r.localStatus==='SYNCED'?'synced':'pending';
   const gps=r.gpsIn?`GPS captured (${Number(r.gpsIn.accuracyMeters||0).toFixed(0)} m reported accuracy)`:'GPS not captured';
   const photoButtons=`${(r.photoInDataUrl||r.photoInFileId)?`<button type="button" class="btn" onclick='viewAttendancePhoto(${JSON.stringify(r.attendanceId)},"in")'>View Time In Photo</button>`:''}${(r.photoOutDataUrl||r.photoOutFileId)?`<button type="button" class="btn" onclick='viewAttendancePhoto(${JSON.stringify(r.attendanceId)},"out")'>View Time Out Photo</button>`:''}`;
-  return `<article class="attendance-record"><div class="attendance-record-head"><div><div class="attendance-record-title">${esc(r.unit||'Unknown unit')}</div><div class="attendance-record-meta">${esc(r.dutyDate||'')} · ${esc(r.shiftId||'')} ${esc(r.shiftLabel||'')}<br>Team Leader: ${esc(r.teamLeader||'-')}<br>Personnel: ${esc((r.personnelPresent||[]).join(', ')||'-')}</div></div><span class="attendance-status ${status}">${esc(attendanceStatus(r))}</span></div><div class="mini-cards"><div class="mini"><span>Time In (device)</span><b style="font-size:10px">${esc(r.timeInDeviceAt?new Date(r.timeInDeviceAt).toLocaleString():'—')}</b></div><div class="mini"><span>Time Out (device)</span><b style="font-size:10px">${esc(r.timeOutDeviceAt?new Date(r.timeOutDeviceAt).toLocaleString():'—')}</b></div><div class="mini"><span>Location</span><b style="font-size:10px">${esc(gps)}</b></div></div><div class="attendance-record-actions">${photoButtons||'<span class="attendance-record-meta">Photo buttons appear after photo proof is saved.</span>'}</div></article>`;
+  const deleteButton=currentUser?.role==='ADMIN'?`<button type="button" class="btn danger" onclick='deleteAttendanceRecord(${JSON.stringify(r.attendanceId)})'>🗑 Delete Test Record</button>`:'';
+  return `<article class="attendance-record"><div class="attendance-record-head"><div><div class="attendance-record-title">${esc(r.unit||'Unknown unit')}</div><div class="attendance-record-meta">${esc(r.dutyDate||'')} · ${esc(r.shiftId||'')} ${esc(r.shiftLabel||'')}<br>Attendance ID: ${esc(r.attendanceId||'-')}<br>Team Leader: ${esc(r.teamLeader||'-')}<br>Personnel: ${esc((r.personnelPresent||[]).join(', ')||'-')}</div></div><span class="attendance-status ${status}">${esc(attendanceStatus(r))}</span></div><div class="mini-cards"><div class="mini"><span>Time In (device)</span><b style="font-size:10px">${esc(r.timeInDeviceAt?new Date(r.timeInDeviceAt).toLocaleString():'—')}</b></div><div class="mini"><span>Time Out (device)</span><b style="font-size:10px">${esc(r.timeOutDeviceAt?new Date(r.timeOutDeviceAt).toLocaleString():'—')}</b></div><div class="mini"><span>Location</span><b style="font-size:10px">${esc(gps)}</b></div></div><div class="attendance-record-actions">${photoButtons||'<span class="attendance-record-meta">Photo buttons appear after photo proof is saved.</span>'}${deleteButton}</div></article>`;
+}
+async function deleteAttendanceRecord(attendanceId){
+  if(currentUser?.role!=='ADMIN'){alert('Admin access is required to delete attendance test records.');return;}
+  const id=String(attendanceId||'').trim();if(!id)return;
+  const okay=confirm(`Delete Attendance ID ${id}?\n\nThis is a TEST DATA action. The server attendance row will be removed, its photos moved to Drive Trash when possible, and an offline deletion notice will be kept so old device copies do not sync back.\n\nContinue?`);
+  if(!okay)return;
+  try{
+    attendanceSyncNotice={text:`Deleting test attendance ${id}…`,tone:'info'};
+    const remote=await apiGet('attendanceData',{token});
+    const remoteRows=Array.isArray(remote.records)?remote.records:[];
+    if(remoteRows.some(r=>String(r.attendanceId||'')===id)){
+      const result=await apiPost('adminDeleteAttendance',{attendanceId:id},true);
+      await deleteLocalAttendance(id).catch(()=>{});
+      attendanceSyncNotice={text:`Deleted test attendance ${id} from server. Photos moved to Drive Trash: ${Number(result.photosTrashed||0)}. Other devices will remove stale copies when they reconnect.`,tone:'online'};
+    }else{
+      const local=await getLocalAttendance(id).catch(()=>null);
+      if(!local)throw new Error('Record was not found on the server or this device. Refresh the page.');
+      await deleteLocalAttendance(id);
+      attendanceSyncNotice={text:`Deleted local-only test attendance ${id} from this device. It was not on the server, so it was not removed from any other device.`,tone:'online'};
+    }
+    await renderAttendancePage();
+    const statusEl=$('attendanceActionStatus');if(statusEl)statusEl.textContent=attendanceSyncNotice.text;
+  }catch(e){
+    attendanceSyncNotice={text:`Delete failed: ${String(e?.message||e)}`,tone:'error'};
+    await renderAttendancePage();
+    const statusEl=$('attendanceActionStatus');if(statusEl)statusEl.textContent=attendanceSyncNotice.text;
+  }
 }
 async function selectAttendanceUnit(unit){attendanceSelectedUnit=String(unit||'ALL');await renderAttendancePage();}
 async function refreshAttendance(){
@@ -1748,8 +1848,37 @@ async function viewAttendancePhoto(attendanceId,side){
     $('attendancePhotoView').src=src;$('attendancePhotoView').style.display='block';$('attendancePhotoLoading').style.display='none';$('attendancePhotoTitle').textContent=`${side==='in'?'Time In':'Time Out'} Photo Proof`;
   }catch(e){$('attendancePhotoLoading').style.display='block';$('attendancePhotoLoading').textContent=e.message||'Unable to load protected photo.';}
 }
-window.addEventListener('online',()=>{syncPendingAttendance().then(()=>{if(currentUser&&currentPage==='attendance')renderAttendancePage().catch(()=>{});}).catch(()=>{});});
-setInterval(()=>{if(currentUser&&navigator.onLine!==false&&!isOfflineSession)syncPendingAttendance().then(r=>{if(currentPage==='attendance'&&(r.synced||r.errors?.length)){if(r.errors?.length)attendanceSyncNotice={text:`Automatic sync: ${r.synced} synced; ${r.pending} pending. Error: ${r.errors[0]}`,tone:'error'};else attendanceSyncNotice={text:`Automatic sync successful: ${r.synced} attendance record(s) synchronized; ${r.pending} pending.`,tone:r.pending?'pending':'online'};renderAttendancePage().catch(()=>{});}}).catch(e=>{if(currentPage==='attendance'){attendanceSyncNotice={text:`Automatic sync failed: ${String(e?.message||e)}`,tone:'error'};renderAttendancePage().catch(()=>{});}});},45000);
+let attendanceAutoSyncTimer=null;
+let attendanceLastAutoSyncAt=0;
+function showAttendanceSyncNotice(text,tone='info'){
+  attendanceSyncNotice={text,tone};
+  const el=$('attendanceActionStatus');
+  if(el){el.className=`offline-sync-status ${tone}`;el.textContent=text;}
+}
+function scheduleAttendanceAutoSync(reason='automatic retry'){
+  if(attendanceAutoSyncTimer)clearTimeout(attendanceAutoSyncTimer);
+  attendanceAutoSyncTimer=setTimeout(async()=>{
+    if(!currentUser||!token||isOfflineSession||navigator.onLine===false)return;
+    const now=Date.now();
+    if(now-attendanceLastAutoSyncAt<5000)return;
+    const local=await getAllLocalAttendance().catch(()=>[]);
+    const inScope=r=>currentUser?.role==='ADMIN'||String(r.unit||'')===String(currentUser?.unit||'');
+    const pending=local.some(r=>r.localStatus!=='SYNCED'&&inScope(r));
+    if(!pending && reason==='periodic retry' && currentPage!=='attendance')return;
+    attendanceLastAutoSyncAt=now;
+    const result=await syncPendingAttendance().catch(e=>({synced:0,pending:pending?1:0,errors:[String(e?.message||e)]}));
+    if(currentUser&&currentPage==='attendance'){
+      if(result.errors?.length)showAttendanceSyncNotice(`Automatic sync (${reason}): ${result.synced||0} synchronized; ${result.pending} pending. Last error: ${result.errors[0]}`,'error');
+      else if(result.synced||result.pending===0)showAttendanceSyncNotice(`Automatic sync successful: ${result.synced||0} attendance record(s) synchronized; ${result.pending} pending.` ,result.pending?'pending':'online');
+      else showAttendanceSyncNotice(`Automatic sync checked: ${result.synced||0} synchronized; ${result.pending} pending.`,'pending');
+      if(result.synced||result.errors?.length)await renderAttendancePage().catch(()=>{});
+    }
+  },650);
+}
+window.addEventListener('online',()=>scheduleAttendanceAutoSync('internet connection restored'));
+window.addEventListener('focus',()=>scheduleAttendanceAutoSync('app focused'));
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleAttendanceAutoSync('app resumed');});
+setInterval(()=>scheduleAttendanceAutoSync('periodic retry'),30000);
 
 function renderUnitConnectivity(){
   const box=$("unitConnectivity");
