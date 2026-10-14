@@ -1547,22 +1547,44 @@ async function syncOneAttendance(record){
   if(record.photoInFileId) payload.photoInDataUrl='';
   if(record.photoOutFileId) payload.photoOutDataUrl='';
   const out=await apiPost('saveAttendance',payload,true);
-  const updated={...record,photoInFileId:out.photoInFileId||record.photoInFileId||'',photoOutFileId:out.photoOutFileId||record.photoOutFileId||'',timeInServerAt:out.timeInServerAt||record.timeInServerAt||'',timeOutServerAt:out.timeOutServerAt||record.timeOutServerAt||'',localStatus:'SYNCED',serverSavedAt:out.savedAt||new Date().toISOString(),updatedAt:Date.now()};
+  // Do not mark local data SYNCED merely because POST returned ok. Verify that
+  // the same authenticated session can read the Attendance ID back from the server.
+  const verify=await apiGet('attendanceData',{token});
+  const remoteRows=Array.isArray(verify.records)?verify.records:[];
+  const confirmed=remoteRows.find(r=>String(r.attendanceId||'')===String(record.attendanceId||''));
+  if(!confirmed) throw new Error('Save request returned success, but the server did not confirm this Attendance ID after upload. The local copy is being kept pending. Check the deployed Code.gs version and ATTENDANCE sheet.');
+  const updated={...record,
+    photoInFileId:out.photoInFileId||confirmed.photoInFileId||record.photoInFileId||'',
+    photoOutFileId:out.photoOutFileId||confirmed.photoOutFileId||record.photoOutFileId||'',
+    timeInServerAt:out.timeInServerAt||confirmed.timeInServerAt||record.timeInServerAt||'',
+    timeOutServerAt:out.timeOutServerAt||confirmed.timeOutServerAt||record.timeOutServerAt||'',
+    localStatus:'SYNCED',serverSavedAt:out.savedAt||new Date().toISOString(),syncError:'',updatedAt:Date.now()};
   await putLocalAttendance(updated);return updated;
 }
 async function syncPendingAttendance(){
-  const allBefore=await getAllLocalAttendance().catch(()=>[]);
-  const pendingBefore=allBefore.filter(r=>r.localStatus!=='SYNCED'&&(currentUser?.role==='ADMIN'||r.unit===currentUser?.unit)).length;
-  if(attendanceSyncInFlight)return {synced:0,pending:pendingBefore,errors:['A sync attempt is already in progress. Wait a moment and retry.']};
-  if(!currentUser||!token)return {synced:0,pending:pendingBefore,errors:['No authenticated session. Sign in again while online.']};
-  if(isOfflineSession)return {synced:0,pending:pendingBefore,errors:['This is an OFFLINE MODE login session. Log out and sign in again with internet so the server can issue an online session.']};
-  if(navigator.onLine===false)return {synced:0,pending:pendingBefore,errors:['The browser reports that this device is offline.']};
-  attendanceSyncInFlight=true;let synced=0;const errors=[];
+  const inScope=r=>currentUser?.role==='ADMIN'||String(r.unit||'')===String(currentUser?.unit||'');
+  const initialLocal=await getAllLocalAttendance().catch(()=>[]);
+  const pendingBefore=initialLocal.filter(r=>r.localStatus!=='SYNCED'&&inScope(r)).length;
+  if(attendanceSyncInFlight)return {synced:0,pending:pendingBefore,errors:['A sync attempt is already in progress. Wait a moment and retry.'],serverCount:null};
+  if(!currentUser||!token)return {synced:0,pending:pendingBefore,errors:['No authenticated session. Sign in again while online.'],serverCount:null};
+  if(isOfflineSession)return {synced:0,pending:pendingBefore,errors:['This is an OFFLINE MODE login session. Log out and sign in again with internet so the server can issue an online session.'],serverCount:null};
+  if(navigator.onLine===false)return {synced:0,pending:pendingBefore,errors:['The browser reports that this device is offline.'],serverCount:null};
+  attendanceSyncInFlight=true;let synced=0;const errors=[];let serverCount=null;
   try{
+    // First read server state. If local storage had previously been marked
+    // SYNCED but the server cannot find that ID, put it back into the retry queue.
+    const before=await apiGet('attendanceData',{token});
+    const beforeRows=Array.isArray(before.records)?before.records:[];
+    const beforeIds=new Set(beforeRows.map(r=>String(r.attendanceId||'')));
     const all=await getAllLocalAttendance();
     for(const row of all){
+      if(!inScope(row))continue;
+      if(row.localStatus==='SYNCED'&&!beforeIds.has(String(row.attendanceId||''))){
+        row.localStatus='PENDING_SYNC';
+        row.syncError='Local status was SYNCED, but this Attendance ID was not found on the server. Retrying safely.';
+        await putLocalAttendance(row);
+      }
       if(row.localStatus==='SYNCED')continue;
-      if(currentUser.role==='TEAM_LEADER'&&String(row.unit)!==String(currentUser.unit))continue;
       try{await syncOneAttendance(row);synced++;}
       catch(e){
         const message=String(e?.message||e||'Unknown sync error');
@@ -1571,9 +1593,27 @@ async function syncPendingAttendance(){
         if(isNetworkError(e))break;
       }
     }
+    // Fresh post-sync read. Never report the pre-sync record count as the final result.
+    const after=await apiGet('attendanceData',{token});
+    const afterRows=Array.isArray(after.records)?after.records:[];
+    serverCount=afterRows.length;
+    const afterIds=new Set(afterRows.map(r=>String(r.attendanceId||'')));
+    const localAfter=await getAllLocalAttendance();
+    for(const row of localAfter){
+      if(!inScope(row)||row.localStatus!=='SYNCED')continue;
+      if(!afterIds.has(String(row.attendanceId||''))){
+        row.localStatus='PENDING_SYNC';
+        row.syncError='Server verification after sync did not find this Attendance ID. Local copy retained for retry.';
+        await putLocalAttendance(row);
+        errors.push(`${row.attendanceId||'Attendance'}: server verification did not confirm the record after sync; local copy retained.`);
+      }
+    }
+  }catch(e){
+    errors.push(String(e?.message||e||'Unable to read or verify attendance on the server.'));
   } finally {attendanceSyncInFlight=false;}
-  const pending=(await getAllLocalAttendance()).filter(r=>r.localStatus!=='SYNCED'&&(currentUser.role==='ADMIN'||r.unit===currentUser.unit)).length;
-  return {synced,pending,errors};
+  const localFinal=await getAllLocalAttendance().catch(()=>[]);
+  const pending=localFinal.filter(r=>r.localStatus!=='SYNCED'&&inScope(r)).length;
+  return {synced,pending,errors,serverCount};
 }
 async function saveAttendanceEvent(side){
   const button=$(side==='IN'?'attendanceSaveIn':'attendanceSaveOut');if(!button||button.disabled)return;
@@ -1665,20 +1705,29 @@ async function refreshAttendance(){
   await manuallyTestServerAndSync();
 }
 async function manuallyTestServerAndSync(){
-  attendanceSyncNotice={text:'Checking the deployed Attendance API…',tone:'info'};
+  attendanceSyncNotice={text:'Checking the deployed Attendance API and verifying saved records…',tone:'info'};
   await renderAttendancePage();
   try{
-    const server=await apiGet('attendanceData',{token});
+    // Initial request proves reachability; syncPendingAttendance then reconciles
+    // local status against the server and performs retries; final count is fresh.
+    await apiGet('attendanceData',{token});
     const result=await syncPendingAttendance();
+    const server=await apiGet('attendanceData',{token});
+    const serverRows=Array.isArray(server.records)?server.records:[];
+    const local=await getAllLocalAttendance().catch(()=>[]);
+    const inScope=r=>currentUser?.role==='ADMIN'||String(r.unit||'')===String(currentUser?.unit||'');
+    const scopedLocal=local.filter(inScope);
+    const missingFromServer=scopedLocal.filter(r=>!serverRows.some(sr=>String(sr.attendanceId||'')===String(r.attendanceId||'')));
+    const pending=local.filter(r=>r.localStatus!=='SYNCED'&&inScope(r)).length;
     if(result.errors?.length){
-      attendanceSyncNotice={text:`Server reachable. Synced ${result.synced}; pending ${result.pending}. Last error: ${result.errors[0]}`,tone:'error'};
-    }else if(result.pending>0){
-      attendanceSyncNotice={text:`Server reachable. Synced ${result.synced}; ${result.pending} record(s) remain pending. Press Test Server + Sync again or inspect local record errors.`,tone:'pending'};
+      attendanceSyncNotice={text:`Server reachable. Newly synced: ${result.synced}; server-confirmed records: ${serverRows.length}; pending local: ${pending}. Last error: ${result.errors[0]}`,tone:'error'};
+    }else if(pending>0||missingFromServer.length>0){
+      attendanceSyncNotice={text:`Server reachable, but sync is NOT fully confirmed. Server records: ${serverRows.length}; newly synced: ${result.synced}; pending local: ${pending}; local IDs not found on server: ${missingFromServer.length}. Local copies were retained. ${missingFromServer.length?`First missing ID: ${missingFromServer[0].attendanceId}.`:''}`,tone:'pending'};
     }else{
-      attendanceSyncNotice={text:`Server connection OK. ${server.records?.length||0} attendance record(s) confirmed on server; no pending local records remain.`,tone:'online'};
+      attendanceSyncNotice={text:`Server connection OK. ${serverRows.length} attendance record(s) confirmed on server after sync; ${result.synced} newly synchronized in this check; no pending local records remain.`,tone:'online'};
     }
   }catch(e){
-    attendanceSyncNotice={text:`BACKEND CHECK FAILED: ${String(e?.message||e)}. Confirm latest Code.gs is deployed as a new Web App version, the API URL matches this deployment, and Attendance Photo Proof setup/permissions were completed.`,tone:'error'};
+    attendanceSyncNotice={text:`BACKEND CHECK FAILED: ${String(e?.message||e)}. Confirm latest Code.gs is deployed as a new Web App version, the API URL matches this deployment, and Attendance Photo Proof setup/permissions were completed. Local pending records must remain on this device.`,tone:'error'};
   }
   await renderAttendancePage();
 }
