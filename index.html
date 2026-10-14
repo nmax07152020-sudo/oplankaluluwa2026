@@ -482,7 +482,7 @@ button{cursor:pointer}
       <div class="kpi"><div class="kpi-icon">⛪</div><div><label>Total Deployment Units</label><strong id="publicUnits">14</strong><small>Consolidated operational units</small></div></div>
       <div class="kpi"><div class="kpi-icon">👥</div><div><label>Total Personnel</label><strong id="publicPersonnel">0</strong><small>From current duty assignments</small></div></div>
       <div class="kpi kpi-report"><div class="kpi-icon">📋</div><div><label>Total Reports</label><strong id="publicReports">0</strong><small>Recorded Reports</small></div></div>
-      <div class="kpi kpi-assisted"><div class="kpi-icon">🩺</div><div><label>Persons Assisted</label><strong id="publicPersons">0</strong><small>Current PATIENTS records</small></div></div>
+      <div class="kpi kpi-assisted"><div class="kpi-icon">🩺</div><div><label>Persons Assisted</label><strong id="publicPersons">0</strong><small>Sum of person counts in reports</small></div></div>
     </div>
 
     <div class="section-head">
@@ -1170,7 +1170,7 @@ async function loadPublicDashboard(){
     $("publicUnits").textContent=d.totalUnits;
     $("publicPersonnel").textContent=d.totalPersonnel;
     $("publicReports").textContent=d.totalReports;
-    $("publicPersons").textContent=d.totalPatientRecords||0;
+    $("publicPersons").textContent=d.totalPersons||0;
     setPublicConnection(true);
     $("publicUnitGrid").innerHTML=d.units.map((u,i)=>{
       const v=unitVisual(i);
@@ -1934,8 +1934,8 @@ function renderAdminDashboard(){
       <div class="kpi"><div class="kpi-icon">⛪</div><div><label>Total Units</label><strong>${d.totalUnits}</strong><small>Consolidated units</small></div></div>
       <div class="kpi"><div class="kpi-icon">👥</div><div><label>Total Personnel</label><strong>${d.totalPersonnel}</strong><small>Current duty assignments</small></div></div>
       <div class="kpi"><div class="kpi-icon">📋</div><div><label>Total Reports</label><strong>${d.totalReports}</strong><small>All units</small></div></div>
-      <div class="kpi"><div class="kpi-icon">🩺</div><div><label>Persons Assisted</label><strong>${d.totalPatientRecords||0}</strong><small>Current PATIENTS records</small></div></div>
-      <div class="kpi"><div class="kpi-icon">🧑‍⚕️</div><div><label>Patient Records</label><strong>${d.totalPatientRecords||0}</strong><small>Current PATIENTS records</small></div></div>
+      <div class="kpi"><div class="kpi-icon">🩺</div><div><label>Persons Assisted</label><strong>${d.totalPersons||0}</strong><small>Sum of person counts in all reports</small></div></div>
+      <div class="kpi"><div class="kpi-icon">🧑‍⚕️</div><div><label>Patient Records</label><strong>${d.totalPatientRecords||0}</strong><small>Current PATIENTS sheet records</small></div></div>
     </div>
     <div class="card"><div class="section-head"><div><h2>Unit Snapshot</h2><p>Click any unit to view its personnel, duty and reports.</p></div></div>
       <div class="public-units">${d.units.map((u,i)=>`<div class="unit-card" onclick="adminOpenUnit(${i})" style="cursor:pointer">
@@ -1964,7 +1964,7 @@ async function adminOpenUnit(index){
           "Group":r.group,"Cemetery / Post":r.cemetery,"Team Leader":r.teamLeader,"Shift ID":r.shiftId,"Shift / Time":r.shift,"Date / Coverage":r.date,"Personnel Name":r.personnelName
         }));
         const summary=(adminData.dashboard?.units||[]).find(x=>x.cemetery===unit)||{};
-        currentUnitData={ok:true,session:currentUser,unit:{name:unit,group:u.Group||"",covered:String(u["Covered Locations"]||"").split(" | ").filter(Boolean),teamLeader:u["Team Leader"]||"",status:u.Status||"ACTIVE"},duty:dutyRows,driverDuty:adminData.driverDuty||[],reports:[],reportTotals:{totalReports:Number(summary.totalReports||0),totalPersons:Number(summary.totalPersons||0)}};
+        currentUnitData={ok:true,session:currentUser,unit:{name:unit,group:u.Group||"",covered:String(u["Covered Locations"]||"").split(" | ").filter(Boolean),teamLeader:u["Team Leader"]||"",status:u.Status||"ACTIVE"},duty:dutyRows,driverDuty:adminData.driverDuty||[],reports:[],patients:(adminData.patients||[]).filter(p=>String(p.cemetery||"")===String(unit)),patientRecordCount:(adminData.patients||[]).filter(p=>String(p.cemetery||"")===String(unit)).length,reportTotals:{totalReports:Number(summary.totalReports||0),totalPersons:Number(summary.totalPersons||0)}};
         renderAdminUnitDetail();
       }
     }else{
@@ -2048,8 +2048,8 @@ function renderLeaderDashboard(){
     <div class="kpis">
       <div class="kpi"><div class="kpi-icon">👥</div><div><label>Personnel On Duty</label><strong>${new Set(currentUnitData.duty.map(x=>x["Personnel Name"]).filter(Boolean)).size}</strong><small>This unit</small></div></div>
       <div class="kpi"><div class="kpi-icon">📋</div><div><label>Total Reports</label><strong>${t.totalReports}</strong><small>This unit</small></div></div>
-      <div class="kpi"><div class="kpi-icon">🩺</div><div><label>Persons Assisted</label><strong>${currentUnitData.patientRecordCount||0}</strong><small>Current PATIENTS records</small></div></div>
-      <div class="kpi"><div class="kpi-icon">🧑‍⚕️</div><div><label>Patient Records</label><strong>${currentUnitData.patientRecordCount||0}</strong><small>Current PATIENTS records</small></div></div>
+      <div class="kpi"><div class="kpi-icon">🩺</div><div><label>Persons Assisted</label><strong>${t.totalPersons||0}</strong><small>Sum of person counts in this unit reports</small></div></div>
+      <div class="kpi"><div class="kpi-icon">🧑‍⚕️</div><div><label>Patient Records</label><strong>${currentUnitData.patientRecordCount||0}</strong><small>Records in this unit PATIENTS data</small></div></div>
       <div class="kpi"><div class="kpi-icon">👤</div><div><label>Team Leaders</label><strong style="font-size:15px">${getTeamLeadersByShift(currentUnitData.duty).reduce((n,g)=>n+g.names.length,0)||0}</strong><small>All assigned shifts</small></div></div>
     </div>
     <div id="unitConnectivity"></div>
@@ -2075,8 +2075,8 @@ function renderAdminUnitDetail(){
     <div class="kpis">
       <div class="kpi"><div class="kpi-icon">👥</div><div><label>Personnel On Duty</label><strong>${new Set((currentUnitData.duty||[]).map(x=>x["Personnel Name"]).filter(Boolean)).size}</strong><small>This unit</small></div></div>
       <div class="kpi"><div class="kpi-icon">📋</div><div><label>Total Reports</label><strong>${t.totalReports||0}</strong><small>This unit</small></div></div>
-      <div class="kpi"><div class="kpi-icon">🩺</div><div><label>Persons Assisted</label><strong>${currentUnitData.patientRecordCount||0}</strong><small>Current PATIENTS records</small></div></div>
-      <div class="kpi"><div class="kpi-icon">🧑‍⚕️</div><div><label>Patient Records</label><strong>${currentUnitData.patientRecordCount||0}</strong><small>Current PATIENTS records</small></div></div>
+      <div class="kpi"><div class="kpi-icon">🩺</div><div><label>Persons Assisted</label><strong>${t.totalPersons||0}</strong><small>Sum of person counts in this unit reports</small></div></div>
+      <div class="kpi"><div class="kpi-icon">🧑‍⚕️</div><div><label>Patient Records</label><strong>${currentUnitData.patientRecordCount||0}</strong><small>Records in this unit PATIENTS data</small></div></div>
       <div class="kpi"><div class="kpi-icon">👤</div><div><label>Team Leaders</label><strong style="font-size:15px">${getTeamLeadersByShift(currentUnitData.duty).reduce((n,g)=>n+g.names.length,0)||0}</strong><small>All assigned shifts</small></div></div>
     </div>
     <div class="card" style="margin-top:14px">${renderAllTeamLeaders(currentUnitData.duty)}</div>
@@ -2677,7 +2677,7 @@ function renderPatientRecordsPage(){
 
   $("patientsPage").innerHTML=`
     <div class="section-head">
-      <div><h2>${isAdmin?"PATIENTS / Records":"My Patients"}</h2><p>${isAdmin?"Central authorized patient records. No Google Sheet access is required for routine viewing.":"Patient records are restricted to your deployment unit."}</p></div>
+      <div><h2>${isAdmin?"PATIENTS / Records":"My Patients"}</h2><p>${isAdmin?"Central records from the PATIENTS sheet. This count is separate from the number of submitted reports.":"Patient records are restricted to your deployment unit."}</p></div>
     </div>
     ${isOfflineSession?`<div class="offline-mode-banner">📵 OFFLINE — Showing the last synchronized patient records<small>New online records will appear after the next synchronization.</small></div>`:""}
     <div class="patient-summary">
@@ -2714,7 +2714,7 @@ function filterPatientRecords(){
   if(unitCountEl) unitCountEl.textContent=new Set(rows.map(r=>r.cemetery).filter(Boolean)).size;
 
   if(!rows.length){
-    $("patientRecordTable").innerHTML='<div style="padding:30px;text-align:center;color:var(--muted);font-size:10px">No patient records found.</div>';
+    $("patientRecordTable").innerHTML='<div style="padding:30px;text-align:center;color:var(--muted);font-size:10px">No patient records found in the PATIENTS sheet for the current filter.</div>';
     return;
   }
 
