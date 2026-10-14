@@ -88,6 +88,7 @@ button{cursor:pointer}
 .offline-sync-status.online{background:#edf9f3;border-color:#b9e6cf;color:#087d50}
 .offline-sync-status.error{background:#fff1f1;border-color:#ffcaca;color:#a73535}
 .offline-login-note{margin-top:10px;padding:8px 10px;border-radius:9px;background:#eef6ff;border:1px solid #cfe4fb;color:#2d5f89;font-size:9px;line-height:1.4}.offline-login-note strong{color:#0b66bf}.offline-mode-banner{margin:-4px 0 12px;padding:8px 10px;border-radius:10px;background:#fff7e6;border:1px solid #f2d28a;color:#8a6100;font-size:9px;font-weight:800}.offline-mode-banner small{display:block;font-size:8px;font-weight:700;margin-top:2px;color:#9a7b33}.online-mode-banner{margin:-4px 0 12px;padding:8px 10px;border-radius:10px;background:#edf9f3;border:1px solid #b9e6cf;color:#087d50;font-size:9px;font-weight:800}\n
+@keyframes saveSpin{to{transform:rotate(360deg)}}
 </style>
 
 
@@ -633,8 +634,9 @@ button{cursor:pointer}
         </div>
 
         <div id="tlPasswordField" class="field">
-          <label>Team Leader Password</label>
-          <input id="userPasswordDisplay" readonly style="background:#f5f8fc;color:#075eb5;font-weight:900">
+          <label>Team Leader Password <span id="tlPasswordRequiredMark">*</span></label>
+          <input id="userPasswordDisplay" type="password" autocomplete="new-password" placeholder="Set a unique password for this unit">
+          <small id="tlPasswordHelp" style="color:var(--muted)">Use a different password for each unit. Leave blank when editing to keep the current password.</small>
         </div>
 
         <div id="adminPasswordField" class="field hidden">
@@ -2273,8 +2275,7 @@ function renderUsersPage(){
 
     <div class="card">
       <div class="notice" style="margin-bottom:12px">
-        Team Leader passwords are automatically tied to the deployment unit:
-        <b>chounit1</b> to <b>chounit14</b>. No username is required.
+        Team Leaders sign in by selecting their assigned unit and entering that account's password. Set a unique password for each unit; passwords are not displayed here.
       </div>
 
       <div class="table-wrap">
@@ -2285,7 +2286,7 @@ function renderUsersPage(){
           <tbody>
             ${adminData.users.map(u=>{
               const login=u.role==="TEAM_LEADER"
-                ? `<b>${esc(u.loginPassword||"")}</b><br><span style="font-size:8px;color:var(--muted)">Password only</span>`
+                ? `<b>${esc(u.unit||"Team Leader")}</b><br><span style="font-size:8px;color:var(--muted)">${u.passwordSet?"Password configured":"Password not set"}</span>`
                 : `<b>${esc(u.username||"")}</b><br><span style="font-size:8px;color:var(--muted)">Username + password</span>`;
               return `<tr>
                 <td><b>${esc(u.fullName||"-")}</b></td>
@@ -2362,26 +2363,27 @@ function getUnitByName(name){
 function updateUserEditorMode(){
   const role=$("userRole").value;
   const isAdmin=role==="ADMIN";
+  const isEditing=!!$("userId").value;
   $("adminUsernameField").classList.toggle("hidden",!isAdmin);
   $("tlPasswordField").classList.toggle("hidden",isAdmin);
   $("adminPasswordField").classList.toggle("hidden",!isAdmin);
   $("tlAccessNotice").classList.toggle("hidden",isAdmin);
   $("userUsername").required=isAdmin;
-  $("userAdminPassword").required=isAdmin;
-
+  $("userAdminPassword").required=isAdmin && !isEditing;
+  $("userPasswordDisplay").required=!isAdmin && !isEditing;
+  $("tlPasswordRequiredMark").textContent=(!isAdmin && !isEditing)?"*":"(optional)";
+  $("tlPasswordHelp").textContent=isEditing
+    ? "Enter a new password to change it. Leave blank to keep the current password."
+    : "Create a unique password for this unit (minimum 6 characters).";
   if(isAdmin){
     $("userPasswordDisplay").value="";
-    $("userAdminPassword").value="";
     $("userUnit").disabled=true;
     $("userUnit").value="";
   }else{
     $("userAdminPassword").value="";
     $("userUnit").disabled=false;
-    const unit=getUnitByName($("userUnit").value);
-    $("userPasswordDisplay").value=unit ? "chounit"+unit.Group : "";
   }
 }
-
 function openNewUser(){
   $("userId").value="";
   $("userFullName").value="";
@@ -2403,11 +2405,10 @@ function editUser(u){
   $("userRole").value=u.role||"TEAM_LEADER";
   $("userStatus").value=u.status||"ACTIVE";
   $("userUnit").value=u.unit||"";
-  $("userPasswordDisplay").value=u.loginPassword||"";
+  $("userPasswordDisplay").value="";
   $("userAdminPassword").value="";
   $("userPersonnelId").value=u.personnelId||"";
   updateUserEditorMode();
-  if(u.role==="ADMIN") $("userAdminPassword").value=u.loginPassword||"";
   openModal("userModal");
 }
 
@@ -2417,8 +2418,26 @@ $("userUnit").addEventListener("change",updateUserEditorMode);
 $("saveUserBtn").addEventListener("click",async()=>{
   const role=$("userRole").value;
   const btn=$("saveUserBtn");
+  const isEditing=!!$("userId").value;
+  const tlPassword=$("userPasswordDisplay").value;
+  if(role==="TEAM_LEADER" && !isEditing && tlPassword.trim().length<6){
+    alert("Please set a Team Leader password with at least 6 characters.");
+    $("userPasswordDisplay").focus();
+    return;
+  }
+  if(role==="TEAM_LEADER" && isEditing && tlPassword.trim() && tlPassword.trim().length<6){
+    alert("New password must be at least 6 characters.");
+    $("userPasswordDisplay").focus();
+    return;
+  }
+  if(role==="ADMIN" && !isEditing && !$("userAdminPassword").value.trim()){
+    alert("Admin password is required for a new Admin account.");
+    $("userAdminPassword").focus();
+    return;
+  }
+  const oldText=btn.textContent;
   btn.disabled=true;
-
+  btn.innerHTML='<span class="save-loading-spinner" style="display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:50%;animation:saveSpin .7s linear infinite;vertical-align:-2px;margin-right:7px"></span>Saving user…';
   try{
     await apiPost("adminSaveUser",{
       userId:$("userId").value,
@@ -2426,21 +2445,22 @@ $("saveUserBtn").addEventListener("click",async()=>{
       username:role==="ADMIN"?$("userUsername").value.trim():"",
       role:role,
       unit:role==="TEAM_LEADER"?$("userUnit").value:"",
-      password:role==="ADMIN"?$("userAdminPassword").value:"",
+      password:role==="ADMIN"?$("userAdminPassword").value:tlPassword.trim(),
       personnelId:$("userPersonnelId").value.trim(),
       status:$("userStatus").value
     });
-
     closeModal("userModal");
     await loadRoleData();
     renderUsersPage();
-    alert("User account saved.");
+    alert("User account saved successfully.");
   }catch(e){
     alert(e.message);
   }finally{
     btn.disabled=false;
+    btn.textContent=oldText||"Save User";
   }
 });
+
 
 async function deleteUser(id){if(!confirm("Delete this user account?"))return;try{await apiPost("adminDeleteUser",{userId:id});await loadRoleData();renderUsersPage()}catch(e){alert(e.message)}}
 
