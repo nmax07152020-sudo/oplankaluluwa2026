@@ -832,6 +832,9 @@ let token = "";
 let adminData = null;
 let currentUnitData = null;
 let currentPage = "dashboard";
+let adminUnitDetailOpen = false;
+let roleDataRefreshInFlight = false;
+let roleRefreshPausedUntil = 0;
 
 
 function displayDateValue(v){
@@ -1425,6 +1428,74 @@ async function loadRoleData(){
   }
 }
 
+async function refreshRoleDataSilently(){
+  if(!currentUser || !token || isOfflineSession || navigator.onLine===false || document.hidden) return;
+  if(roleDataRefreshInFlight || Date.now()<roleRefreshPausedUntil) return;
+  roleDataRefreshInFlight=true;
+  const role=currentUser.role;
+  const page=currentPage;
+  const savedPatientSearch=$("patientSearch")?.value||"";
+  const savedPatientUnit=$("patientUnitFilter")?.value||"";
+  const savedReportUnit=$("reportUnitFilter")?.value||"";
+  const savedReportType=$("reportTypeFilter")?.value||"";
+  const savedAdminUnit=currentUnitData?.unit?.name||"";
+  try{
+    if(role==="ADMIN"){
+      adminData=await apiGet("adminData",{token});
+      await cacheRoleDataForOffline("ADMIN",adminData);
+      if(page==="dashboard"){
+        renderAdminDashboard();
+      }else if(page==="patients"){
+        renderPatientRecordsPage();
+        if($("patientUnitFilter")) $("patientUnitFilter").value=savedPatientUnit;
+        if($("patientSearch")) $("patientSearch").value=savedPatientSearch;
+        filterPatientRecords();
+      }else if(page==="adminReports"){
+        renderAdminReports();
+        if($("reportUnitFilter")) $("reportUnitFilter").value=savedReportUnit;
+        if($("reportTypeFilter")) $("reportTypeFilter").value=savedReportType;
+        filterAdminReports();
+      }else if(page==="unit"){
+        if(adminUnitDetailOpen && savedAdminUnit){
+          currentUnitData=await apiGet("unitData",{token,unit:savedAdminUnit});
+          renderAdminUnitDetail();
+        }else{
+          renderAllUnits();
+        }
+      }else if(page==="report"){
+        const selectedUnit=$("reportSite")?.value||savedAdminUnit||(adminData.units||[])[0]?.["Cemetery / Post"]||"";
+        if(selectedUnit) renderReportSummary(selectedUnit);
+      }
+    }else if(role==="TEAM_LEADER"){
+      currentUnitData=await apiGet("unitData",{token,unit:currentUser.unit});
+      await cacheRoleDataForOffline("TEAM_LEADER",currentUnitData);
+      await cacheOfflineUnitData(currentUnitData);
+      if(page==="dashboard"){
+        renderLeaderDashboard();
+      }else if(page==="patients"){
+        renderPatientRecordsPage();
+        if($("patientSearch")) $("patientSearch").value=savedPatientSearch;
+        filterPatientRecords();
+      }else if(page==="unit"){
+        renderLeaderUnit();
+      }else if(page==="report"){
+        renderReportSummary(currentUser.unit);
+      }
+    }
+  }catch(err){
+    console.warn("Automatic dashboard data refresh failed; keeping the last loaded data.",err);
+  }finally{
+    roleDataRefreshInFlight=false;
+  }
+}
+
+// Refresh server-backed counts and lists on open dashboards every 30 seconds.
+// This is read-only; it does not interfere with offline queues or unsaved report form fields.
+setInterval(refreshRoleDataSilently,30000);
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="visible") refreshRoleDataSilently();
+});
+
 function navigate(page){
   currentPage=page;
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
@@ -1972,6 +2043,7 @@ async function adminOpenUnit(index){
       await cacheOfflineUnitData(currentUnitData);
     }
     currentPage="unit";
+    adminUnitDetailOpen=true;
     document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
     $("unitPage").classList.add("active");
     document.querySelectorAll("#privateNav button").forEach(b=>b.classList.toggle("active",b.dataset.page==="unit"));
@@ -2010,6 +2082,7 @@ function renderAllTeamLeaders(rows){
 }
 
 function renderAllUnits(){
+  adminUnitDetailOpen=false;
   if(!adminData) return;
   const units=(adminData.units||[]).filter(u=>String(u.Status||'ACTIVE').toUpperCase()!=='DELETED');
   $("unitPage").innerHTML=`
@@ -2736,7 +2809,7 @@ function filterPatientRecords(){
 
 async function deletePatientRecord(patientId){
   if(currentUser?.role!=="ADMIN") { alert("Only Admin can delete patient records."); return; }
-  if(isOfflineSession){ alert("Patient deletion is unavailable in offline mode. Please reconnect to the internet."); return; }
+  if(isOfflineSession || navigator.onLine===false){ alert("Patient deletion is unavailable offline. Please reconnect to the internet."); return; }
   const id=String(patientId||"").trim();
   if(!id) return;
 
@@ -2744,21 +2817,35 @@ async function deletePatientRecord(patientId){
   const name=String(row?.fullName||"Patient").trim();
   const linkedReport=String(row?.linkedReportId||"").trim();
   const ok=confirm(
-    `Delete this patient record?\n\n`+
+    `Delete this patient and its linked report?\n\n`+
     `Patient ID: ${id}\n`+
-    `Patient: ${name}\n\n`+
-    `This will permanently delete the corresponding row from the PATIENTS sheet.`+
-    (linkedReport?`\n\nLinked report ${linkedReport} will remain in REPORTS.`:"")
+    `Patient: ${name}\n`+
+    (linkedReport?`Linked Report ID: ${linkedReport}\n\n`:"\n")+
+    `This permanently removes the patient row from PATIENTS and any REPORTS row explicitly linked by Patient ID or Linked Report ID.\n`+
+    `The Admin totals, unit report summaries, All Reports, and Team Leader dashboard will refresh from the server.`
   );
   if(!ok) return;
 
+  roleRefreshPausedUntil=Date.now()+10000;
   try{
-    await apiPost("adminDeletePatient",{patientId:id});
+    const result=await apiPost("adminDeletePatient",{patientId:id});
+    // Re-fetch authoritative Google Sheets data immediately for the Admin session.
     await loadRoleData();
     renderPatientRecordsPage();
-    alert("Patient record deleted successfully.");
+    const reportsDeleted=Number(result.linkedReportsDeleted||0);
+    const remainingReports=(result.remainingReports==null)?"unknown":result.remainingReports;
+    const remainingPatients=(result.remainingPatientRecords==null)?"unknown":result.remainingPatientRecords;
+    alert(
+      `Patient record deleted successfully.\n\n`+
+      `Linked report records deleted: ${reportsDeleted}\n`+
+      `Reports remaining: ${remainingReports}\n`+
+      `Patient records remaining: ${remainingPatients}\n\n`+
+      `Other online dashboards will automatically refresh within 30 seconds.`
+    );
   }catch(e){
     alert("Unable to delete patient record: "+(e.message||e));
+  }finally{
+    roleRefreshPausedUntil=Date.now()+5000;
   }
 }
 
