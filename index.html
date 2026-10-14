@@ -106,7 +106,7 @@ button{cursor:pointer}
 .chat-layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:14px;min-height:520px}
 .chat-users{display:grid;gap:8px;align-content:start;max-height:520px;overflow:auto}
 .chat-user-btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:11px;text-align:left;display:flex;align-items:center;gap:10px;transition:.15s;position:relative}
-.chat-user-row{display:flex;align-items:stretch;gap:6px;min-width:0}.chat-user-btn{flex:1;min-width:0;width:0}.chat-user-delete{border:1px solid #f0c7c7;background:#fff5f5;color:#ae2424;border-radius:10px;padding:8px 9px;font-size:9px;font-weight:900;cursor:pointer;flex:0 0 auto;align-self:stretch}.chat-user-delete:hover{background:#ffe4e4;border-color:#e8a8a8}.chat-user-delete:disabled{opacity:.55;cursor:wait}
+.chat-user-row{display:flex;align-items:stretch;gap:6px;min-width:0}.chat-user-btn{flex:1;min-width:0;width:100%}
 .chat-user-btn:hover{background:#f5f9ff;border-color:#cfe1f3}
 .chat-user-btn.active{background:#eaf4ff;border-color:#a9cff4}
 .chat-avatar{width:36px;height:36px;border-radius:11px;background:#e4f2ff;color:#0b66bf;display:grid;place-items:center;font-size:11px;font-weight:900;flex:0 0 36px}
@@ -3012,7 +3012,7 @@ function renderChatPage(){
     <div class="chat-note"><b>Operational chat:</b> Please do not send patient-identifying or other sensitive medical information here.</div>
     <div class="chat-layout">
       <div class="card">
-        <div class="section-head" style="align-items:center"><div><h2 style="font-size:14px">Chat Users</h2><p>Online and recently seen authorized users.</p></div></div>
+        <div class="section-head" style="align-items:center"><div><h2 style="font-size:14px">Chat Users</h2><p>Online and recently seen authorized users.</p></div>${isAdminChatUser()?'<button type="button" class="btn danger chat-reset-btn" onclick="resetFirebaseLiveChat()" title="Clear all Live Chat messages and unread counts">Reset All</button>':""}</div>
         <div id="firebaseChatUsers" class="chat-users"></div>
       </div>
       <div class="card chat-panel">
@@ -3053,9 +3053,6 @@ function renderChatUsers(){
     const online=Boolean(u.online);
     const presence=online?"Online":formatChatLastSeen(u.lastSeen);
     const displayName=chatDisplayName(u);
-    const removeChatButton=isAdminChatUser()
-      ? `<button type="button" class="chat-user-delete" title="Delete this conversation history (does not delete the account)" onclick="deleteFirebaseChatConversation('${esc(String(u.chatKey))}')">Delete</button>`
-      : "";
     return `<div class="chat-user-row">
       <button type="button" class="chat-user-btn${active?' active':''}" onclick="openFirebaseChat('${esc(String(u.chatKey))}')">
         <span class="chat-avatar">${esc(chatInitials(displayName))}</span>
@@ -3063,7 +3060,6 @@ function renderChatUsers(){
         <span class="chat-online-dot${online?'':' offline'}"></span>
         ${unread>0?`<span class="chat-user-badge">${unread>99?'99+':unread}</span>`:''}
       </button>
-      ${removeChatButton}
     </div>`;
   }).join("");
 }
@@ -3209,53 +3205,82 @@ async function openFirebaseChat(chatKey){
   if($("firebaseChatInput")) $("firebaseChatInput").focus();
 }
 
-async function deleteFirebaseChatConversation(chatKey){
+async function resetFirebaseLiveChat(){
   if(!isAdminChatUser()){
-    alert("Only Admin can delete Live Chat conversations.");
+    alert("Only Admin can reset Live Chat.");
     return;
   }
-  if(!firebaseDb||!firebaseReady){alert("Live Chat is not connected. Try again when the connection is restored.");return;}
-  const target=firebaseUserCache.find(u=>String(u.chatKey)===String(chatKey));
-  if(!target){alert("This chat user is no longer available in the list.");return;}
-  const targetName=chatDisplayName(target);
-  if(!confirm(`Delete the entire conversation history with ${targetName}? This removes the messages for both sides. It will NOT delete the user's account or unit listing.`)) return;
-  const myKey=firebaseStableChatKey||getStableChatKey(currentUser);
-  const targetKey=target.chatKey||getStableChatKey(target);
-  const canonicalId=chatIdFor(myKey,targetKey);
-  const usernameLegacyMy=getUsernameStableChatKey(currentUser);
-  const usernameLegacyTarget=getUsernameStableChatKey(target);
-  const usernameLegacyId=chatIdFor(usernameLegacyMy,usernameLegacyTarget);
-  const updates={};
-  [...new Set([canonicalId,usernameLegacyId])].forEach(id=>{if(id) updates[`chats/${id}`]=null;});
-  [...new Set([targetKey,usernameLegacyTarget])].forEach(key=>{
-    updates[`userUnread/${myKey}/${key}`]=null;
-    updates[`userUnread/${key}/${myKey}`]=null;
-  });
-  const btns=Array.from(document.querySelectorAll(".chat-user-delete"));
-  btns.forEach(b=>b.disabled=true);
+  if(!firebaseDb||!firebaseReady){
+    alert("Live Chat is not connected. Reconnect before resetting.");
+    return;
+  }
+  const confirmed=confirm("RESET ALL LIVE CHAT?\n\nThis permanently clears message history and conversation metadata for ALL users, and resets all unread counts to zero. Chat user listings, accounts, online presence, and other OPLAN data will remain. This cannot be undone.");
+  if(!confirmed) return;
+  const phrase=prompt("To confirm the permanent reset, type RESET (all capital letters):");
+  if(phrase!=="RESET"){
+    if(phrase!==null) alert("Reset cancelled. You must type RESET exactly.");
+    return;
+  }
+
+  const button=document.querySelector(".chat-reset-btn");
+  if(button){button.disabled=true;button.textContent="Resetting...";}
   try{
-    await firebaseDb.ref().update(updates);
-    firebaseUnreadCache[targetKey]=0;
-    if(firebaseSelectedChatUser?.chatKey===targetKey){
-      try{
-        if(firebaseMessagesRef) firebaseMessagesRef.off();
-        if(firebaseSeenRef) firebaseSeenRef.off();
-        if(firebaseTypingRef) firebaseTypingRef.off();
-        if(firebaseTypingTargetRef) firebaseTypingTargetRef.off();
-      }catch(e){}
-      firebaseMessagesRef=null;firebaseSeenRef=null;firebaseTypingRef=null;firebaseTypingTargetRef=null;
-      firebaseMessageCache=new Map();
-      const box=$("firebaseChatMessages");
-      if(box) box.innerHTML='<div class="chat-empty">Conversation deleted. You can start a new conversation with this unit.</div>';
-    }
+    // Detach the currently open listeners first so cleared history cannot remain in the UI.
+    clearTimeout(firebaseTypingTimer);firebaseTypingTimer=null;
+    try{
+      if(firebaseMessagesRef) firebaseMessagesRef.off();
+      if(firebaseSeenRef) firebaseSeenRef.off();
+      if(firebaseTypingRef) firebaseTypingRef.off();
+      if(firebaseTypingTargetRef) firebaseTypingTargetRef.off();
+    }catch(e){}
+    firebaseMessagesRef=null;firebaseSeenRef=null;firebaseTypingRef=null;firebaseTypingTargetRef=null;
+
+    // Read the current chat/unread roots and delete leaf paths. This avoids relying on
+    // permission to overwrite a whole parent path where rules allow child-level writes.
+    const [chatsSnap,unreadSnap]=await Promise.all([
+      firebaseDb.ref("chats").once("value"),
+      firebaseDb.ref("userUnread").once("value")
+    ]);
+    const updates={};
+    chatsSnap.forEach(chatNode=>{updates[`chats/${chatNode.key}`]=null;});
+    unreadSnap.forEach(userNode=>{
+      const unreadNode=userNode.val()||{};
+      if(unreadNode&&typeof unreadNode==="object"){
+        Object.keys(unreadNode).forEach(otherKey=>{updates[`userUnread/${userNode.key}/${otherKey}`]=null;});
+      }else{
+        updates[`userUnread/${userNode.key}`]=null;
+      }
+    });
+    if(Object.keys(updates).length) await firebaseDb.ref().update(updates);
+
+    // Reset local state and selection without touching user accounts or presence records.
+    firebaseMessageCache=new Map();
+    firebaseUnreadCache={};
+    firebaseTargetSeenAt=0;
+    firebaseSelectedChatUser=null;
+    try{localStorage.removeItem(chatSelectionStorageKey());}catch(e){}
+    const header=$("firebaseChatHeader");
+    if(header) header.innerHTML='<div class="chat-avatar">💬</div><div style="min-width:0"><h3>Select a user</h3><small>Messages appear here in real time.</small><span id="chatTypingIndicator" class="chat-typing"></span></div>';
+    const box=$("firebaseChatMessages");
+    if(box) box.innerHTML='<div class="chat-empty">Live Chat has been reset. Select a user to start a new conversation.</div>';
+    const input=$("firebaseChatInput");
+    const send=$("firebaseChatSend");
+    if(input){input.value="";input.disabled=true;}
+    if(send) send.disabled=true;
     updateChatUnreadBadge();
     renderChatUsers();
-    alert(`Chat conversation with ${targetName} deleted. The user account remains active.`);
+    alert("Live Chat reset completed. All saved conversations and unread counts are cleared. User listings and accounts were preserved.");
   }catch(err){
-    console.error("Admin delete conversation failed",err);
-    alert("Could not delete this conversation. Check Firebase Realtime Database write permissions. Details: "+(err?.message||err));
+    console.error("Admin Live Chat reset failed",err);
+    alert("Could not reset all Live Chat data. Check Firebase Realtime Database read/write permissions. Details: "+(err?.message||err));
+    updateChatUnreadBadge();
+    renderChatUsers();
+    // Restore listeners on the previously selected conversation if reset failed.
+    const previousChatKey=firebaseSelectedChatUser?.chatKey;
+    if(previousChatKey&&firebaseReady) requestAnimationFrame(()=>openFirebaseChat(previousChatKey));
   }finally{
-    Array.from(document.querySelectorAll(".chat-user-delete")).forEach(b=>b.disabled=false);
+    const currentButton=document.querySelector(".chat-reset-btn");
+    if(currentButton){currentButton.disabled=false;currentButton.textContent="Reset All";}
   }
 }
 
