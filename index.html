@@ -2031,12 +2031,11 @@ function renderAdminDashboard(){
       <div class="kpi"><div class="kpi-icon">👥</div><div><label>Total Personnel</label><strong>${d.totalPersonnel}</strong><small>Current duty assignments</small></div></div>
       <div class="kpi"><div class="kpi-icon">📋</div><div><label>Total Reports</label><strong>${d.totalReports}</strong><small>All units</small></div></div>
       <div class="kpi"><div class="kpi-icon">🩺</div><div><label>Persons Assisted</label><strong>${d.totalPersons||0}</strong><small>Sum of person counts in all reports</small></div></div>
-      <div class="kpi"><div class="kpi-icon">🧑‍⚕️</div><div><label>Patient Records</label><strong>${d.totalPatientRecords||0}</strong><small>Current PATIENTS sheet records</small></div></div>
     </div>
     <div class="card"><div class="section-head"><div><h2>Unit Snapshot</h2><p>Click any unit to view its personnel, duty and reports.</p></div></div>
       <div class="public-units">${d.units.map((u,i)=>`<div class="unit-card" onclick="adminOpenUnit(${i})" style="cursor:pointer">
         <h3 class="unit-snapshot-name">${esc(String(u.cemetery || u["Cemetery / Post"] || ((LOCAL_UNITS.find(x=>Number(x.group)===Number(u.Group||u.group))||{}).name) || ((LOCAL_UNITS[i]||{}).name) || ("Deployment Unit "+(i+1))) )}</h3>
-        <div class="unit-meta"><div><span>Reports</span><b>${u.totalReports ?? u["Total Reports"] ?? 0}</b></div><div><span>Persons</span><b>${u.totalPersons ?? u["Total Persons"] ?? 0}</b></div><div><span>Patients</span><b>${u.totalPatientRecords||0}</b></div></div>
+        <div class="unit-meta"><div><span>Reports</span><b>${u.totalReports ?? u["Total Reports"] ?? 0}</b></div><div><span>Persons</span><b>${u.totalPersons ?? u["Total Persons"] ?? 0}</b></div></div>
       </div>`).join("")}</div>
     </div><div id="unitConnectivity"></div>
     <div class="card" style="margin-top:14px"><div class="section-head"><div><h2>Report Type Settings</h2><p>Add or remove report categories here. Saved options update future submissions and report summaries.</p></div><button type="button" class="btn primary" onclick="openReportTypeManager()">⚙ Manage Report Types</button></div><div class="report-type-chip-list">${REPORT_TYPE_OPTIONS.map(type=>`<span class="report-type-chip">${esc(type)}</span>`).join("")}</div></div>
@@ -2148,7 +2147,7 @@ function renderLeaderDashboard(){
       <div class="kpi"><div class="kpi-icon">👥</div><div><label>Personnel On Duty</label><strong>${new Set(currentUnitData.duty.map(x=>x["Personnel Name"]).filter(Boolean)).size}</strong><small>This unit</small></div></div>
       <div class="kpi"><div class="kpi-icon">📋</div><div><label>Total Reports</label><strong>${t.totalReports}</strong><small>This unit</small></div></div>
       <div class="kpi"><div class="kpi-icon">🩺</div><div><label>Persons Assisted</label><strong>${t.totalPersons||0}</strong><small>Sum of person counts in this unit reports</small></div></div>
-      <div class="kpi"><div class="kpi-icon">🧑‍⚕️</div><div><label>Patient Records</label><strong>${currentUnitData.patientRecordCount||0}</strong><small>Records in this unit PATIENTS data</small></div></div>
+
       <div class="kpi"><div class="kpi-icon">👤</div><div><label>Team Leaders</label><strong style="font-size:15px">${getTeamLeadersByShift(currentUnitData.duty).reduce((n,g)=>n+g.names.length,0)||0}</strong><small>All assigned shifts</small></div></div>
     </div>
     <div id="unitConnectivity"></div>
@@ -2173,7 +2172,7 @@ function renderAdminUnitDetail(){
       <div class="kpi"><div class="kpi-icon">👥</div><div><label>Personnel On Duty</label><strong>${new Set((currentUnitData.duty||[]).map(x=>x["Personnel Name"]).filter(Boolean)).size}</strong><small>This unit</small></div></div>
       <div class="kpi"><div class="kpi-icon">📋</div><div><label>Total Reports</label><strong>${t.totalReports||0}</strong><small>This unit</small></div></div>
       <div class="kpi"><div class="kpi-icon">🩺</div><div><label>Persons Assisted</label><strong>${t.totalPersons||0}</strong><small>Sum of person counts in this unit reports</small></div></div>
-      <div class="kpi"><div class="kpi-icon">🧑‍⚕️</div><div><label>Patient Records</label><strong>${currentUnitData.patientRecordCount||0}</strong><small>Records in this unit PATIENTS data</small></div></div>
+
       <div class="kpi"><div class="kpi-icon">👤</div><div><label>Team Leaders</label><strong style="font-size:15px">${getTeamLeadersByShift(currentUnitData.duty).reduce((n,g)=>n+g.names.length,0)||0}</strong><small>All assigned shifts</small></div></div>
     </div>
     <div class="card" style="margin-top:14px">${renderAllTeamLeaders(currentUnitData.duty)}</div>
@@ -2966,16 +2965,59 @@ function renderAdminReports(){
     return;
   }
   $("adminReportsPage").innerHTML=`
-    <div class="section-head"><div><h2>All Reports</h2><p>Central report monitoring. Patient details are visible only to authorized users.</p></div><button type="button" class="btn primary" onclick="openReportTypeManager()">⚙ Manage Report Types</button></div>
-    <div class="card"><div class="filters"><select id="reportUnitFilter"><option value="">All Units</option>${adminData.units.map(u=>`<option>${esc(u["Cemetery / Post"])}</option>`).join("")}</select><select id="reportTypeFilter"><option value="">All Types</option>${[...new Set([...REPORT_TYPE_OPTIONS,...(adminData.reports||[]).map(r=>String(r.type||'').trim()).filter(Boolean)])].map(type=>`<option value="${esc(type)}">${esc(type==="Other"?"Other (legacy records)":type)}</option>`).join("")}</select></div><div id="adminReportTable"></div></div>`;
+    <div class="section-head"><div><h2>All Reports</h2><p>Central report monitoring. Patient details are visible only to authorized users.</p></div><div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button type="button" class="btn" onclick="exportAdminReportsCsv()" title="Export the report rows currently matching the selected filters">⬇ Export CSV</button><button type="button" class="btn primary" onclick="openReportTypeManager()">⚙ Manage Report Types</button></div></div>
+    <div class="card"><div class="filters"><select id="reportUnitFilter"><option value="">All Units</option>${adminData.units.map(u=>`<option>${esc(u["Cemetery / Post"])}</option>`).join("")}</select><select id="reportTypeFilter"><option value="">All Types</option>${[...new Set([...REPORT_TYPE_OPTIONS,...(adminData.reports||[]).map(r=>String(r.type||'').trim()).filter(Boolean)])].map(type=>`<option value="${esc(type)}">${esc(type==="Other"?"Other (legacy records)":type)}</option>`).join("")}</select></div><p style="font-size:10px;color:var(--muted);margin:0 0 10px">Export CSV downloads the rows matching these filters. Select <b>All Units</b> and <b>All Types</b> to export the complete report list.</p><div id="adminReportTable"></div></div>`;
   ["reportUnitFilter","reportTypeFilter"].forEach(id=>$(id).addEventListener("change",filterAdminReports));filterAdminReports();
 }
-function filterAdminReports(){
+function getFilteredAdminReportRows(){
   let rows=(adminData.reports||[]).filter(r=>!r.patientId || r.patientRecordPresent!==false);
-  const u=$("reportUnitFilter").value,t=$("reportTypeFilter").value;
-  if(u)rows=rows.filter(r=>r.cemetery===u);
-  if(t)rows=rows.filter(r=>r.type===t);
+  const unitFilter=$("reportUnitFilter")?.value||"";
+  const typeFilter=$("reportTypeFilter")?.value||"";
+  if(unitFilter) rows=rows.filter(r=>r.cemetery===unitFilter);
+  if(typeFilter) rows=rows.filter(r=>r.type===typeFilter);
+  return rows;
+}
+function filterAdminReports(){
+  const rows=getFilteredAdminReportRows();
   $("adminReportTable").innerHTML=rows.length?`<div class="table-wrap"><table><thead><tr><th>Date/Time</th><th>Unit</th><th>Reporter</th><th>Type</th><th>Patient/Count</th><th>Status</th><th>Details</th></tr></thead><tbody>${rows.slice().reverse().map(r=>`<tr><td>${esc(r.reportDate)}<br>${esc(r.reportTime)}</td><td>${esc(r.cemetery)}</td><td>${esc(r.reporter)}</td><td>${esc(r.type)}</td><td>${esc(r.patientId||"NO PATIENT")} / ${r.count}</td><td>${esc(r.status)}</td><td>${esc(r.details)}</td></tr>`).join("")}</tbody></table></div>`:'<div style="padding:25px;text-align:center;color:var(--muted);font-size:10px">No active patient-linked reports found.</div>';
+}
+function exportAdminReportsCsv(){
+  if(currentUser?.role!=="ADMIN") { alert("Only Admin can export All Reports."); return; }
+  if(isOfflineSession) { alert("Export is available when online report data has loaded."); return; }
+  const rows=getFilteredAdminReportRows();
+  if(!rows.length) { alert("No reports match the selected filters."); return; }
+  const columns=[
+    ["Report ID",r=>r.reportId],
+    ["Report Date",r=>r.reportDate],
+    ["Report Time",r=>r.reportTime],
+    ["Unit",r=>r.cemetery],
+    ["Team Leader",r=>r.teamLeader],
+    ["Reporter",r=>r.reporter],
+    ["Report Type",r=>r.type],
+    ["Patient / Person Count",r=>r.count],
+    ["Patient ID",r=>r.patientId],
+    ["Status",r=>r.status],
+    ["Details",r=>r.details],
+    ["Action Taken",r=>r.actionTaken]
+  ];
+  const csvCell=value=>{
+    let text=String(value==null?"":value).replace(/\r\n/g,"\n").replace(/\r/g,"\n");
+    // Prevent spreadsheet formula execution from untrusted text fields.
+    if(/^[\s]*[=+@]/.test(text) || /^[\s]*-\d/.test(text)) text="'"+text;
+    return '"'+text.replace(/"/g,'""')+'"';
+  };
+  const csv=[columns.map(c=>csvCell(c[0])).join(","),...rows.map(r=>columns.map(c=>csvCell(c[1](r))).join(","))].join("\r\n");
+  const blob=new Blob(["\uFEFF",csv],{type:"text/csv;charset=utf-8;"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  const unitFilter=$("reportUnitFilter")?.value||"All_Units";
+  const typeFilter=$("reportTypeFilter")?.value||"All_Types";
+  const safePart=value=>String(value).replace(/[^a-z0-9_-]+/gi,"_").replace(/^_+|_+$/g,"").slice(0,50)||"All";
+  a.href=url;
+  a.download=`OPLAN_KALULUWA_All_Reports_${safePart(unitFilter)}_${safePart(typeFilter)}_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  alert(`Export complete: ${rows.length} report(s).\n\nThe CSV includes all fields shown in the export columns. Current filters were applied.`);
 }
 
 /* =========================================================
