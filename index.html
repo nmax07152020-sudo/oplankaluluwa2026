@@ -453,6 +453,13 @@ button{cursor:pointer}
   #loginForm > .field select { max-width: 100%; }
 }
 </style>
+<style id="health-commodities-inventory-css">
+.inventory-hero{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:20px;border-radius:18px;background:linear-gradient(120deg,#eaf4ff,#f7fbff);border:1px solid #d5e7f8;margin:0 0 14px;box-shadow:0 8px 24px rgba(24,74,120,.06)}
+.inventory-hero span{display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#31658e}.inventory-hero strong{display:block;font-size:20px;color:#153e60;margin:5px 0;overflow-wrap:anywhere}.inventory-hero small{display:block;font-size:10px;line-height:1.5;color:#54718a}.inventory-hero-icon{font-size:34px;flex:none;width:58px;height:58px;display:grid;place-items:center;border-radius:17px;background:#fff;box-shadow:0 4px 14px rgba(23,72,116,.1)}
+.inventory-kpis{margin-bottom:14px}.inventory-card{margin:0 0 14px}.inventory-two-col{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:14px}.inventory-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px;margin-bottom:15px}.inventory-form-stack{display:flex;flex-direction:column;gap:9px}.inventory-form-grid .field,.inventory-form-stack .field{min-width:0}.inventory-span-two{grid-column:1/-1}.inventory-form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}.inventory-form-actions .btn{min-width:110px}.inventory-empty,.inventory-loading{padding:25px;text-align:center;color:var(--muted);font-size:11px}.inventory-table{min-width:760px}.inventory-table th,.inventory-table td{font-size:10px;vertical-align:top}.inventory-table td{max-width:320px;overflow-wrap:anywhere}.inventory-subtext{display:block;font-size:9px;color:var(--muted);margin-top:4px;white-space:pre-line}.inventory-stock-status,.inventory-tx-badge{display:inline-flex;align-items:center;border-radius:99px;padding:4px 7px;font-size:8px;font-weight:900;letter-spacing:.03em;white-space:nowrap}.inventory-stock-status.ok{background:#e9f8ee;color:#187245}.inventory-stock-status.low{background:#fff1d7;color:#955b00}.inventory-stock-status.out{background:#fee2e2;color:#991b1b}.inventory-tx-badge.stockin{background:#e8f5eb;color:#216e39}.inventory-tx-badge.distribute{background:#e8f2ff;color:#1b5a99}.inventory-tx-badge.release{background:#fff0eb;color:#a4422a}.inventory-shortcut{border-left:4px solid #3986c7}.inventory-shortcut .section-head{align-items:center}.inventory-shortcut .btn{white-space:nowrap}
+@media(max-width:780px){.inventory-two-col{grid-template-columns:1fr}.inventory-hero{padding:15px}.inventory-hero strong{font-size:17px}.inventory-table{min-width:690px}}
+@media(max-width:540px){.inventory-form-grid{grid-template-columns:1fr}.inventory-span-two{grid-column:auto}.inventory-form-actions{justify-content:stretch}.inventory-form-actions .btn{flex:1}.inventory-hero-icon{width:44px;height:44px;font-size:26px}.inventory-kpis .kpi{min-width:0}}
+</style>
 </head>
 <body>
 
@@ -516,6 +523,7 @@ button{cursor:pointer}
       <div class="top-title"><h1 id="pageTitle">Dashboard</h1><p id="pageSub">Oplan Kaluluwa 2026</p></div>
       <div class="session-pill"><div id="sessionAvatar" class="session-avatar">TL</div><div><b id="sessionName">User</b><small id="sessionRole">Role</small></div></div>
     </header>
+    <div id="localCacheStatus" class="hidden" style="margin:10px 18px 0;padding:10px 12px;border-radius:10px;border:1px solid #cfe1f5;background:#f3f8ff;color:#214e78;font-size:11px;line-height:1.45;font-weight:700"></div>
 
     <div class="content">
       <section id="privateDashboard" class="page active"></section>
@@ -523,6 +531,7 @@ button{cursor:pointer}
       <section id="dutyPage" class="page"></section>
       <section id="reportPage" class="page"></section>
       <section id="patientsPage" class="page"></section>
+      <section id="inventoryPage" class="page"></section>
       <section id="personnelPage" class="page"></section>
       <section id="usersPage" class="page"></section>
       <section id="adminReportsPage" class="page"></section>
@@ -852,8 +861,38 @@ let adminData = null;
 let currentUnitData = null;
 let currentPage = "dashboard";
 let adminUnitDetailOpen = false;
+// Admin dashboard summary can render immediately; the complete Admin dataset hydrates separately.
+let adminFullDataLoaded = false;
+let adminFullDataPromise = null;
 let roleDataRefreshInFlight = false;
 let roleRefreshPausedUntil = 0;
+let adminUnitDetailLoadInFlight = false;
+let cacheRefreshNoticeText = "";
+
+function setLocalCacheStatus(message, tone="info"){
+  const el=$("localCacheStatus");
+  if(!el) return;
+  const text=String(message||"").trim();
+  el.textContent=text;
+  el.classList.toggle("hidden",!text);
+  el.style.borderColor=tone==="error"?"#fecaca":"#cfe1f5";
+  el.style.background=tone==="error"?"#fff7f7":"#f3f8ff";
+  el.style.color=tone==="error"?"#991b1b":"#214e78";
+}
+function cacheTimestampLabel(savedAt){
+  const n=Number(savedAt||0);
+  return n>0?new Date(n).toLocaleString():"an earlier session";
+}
+function inventoryCacheKeyForCurrentUser(){
+  return currentUser?.role==="ADMIN"?"INVENTORY::ADMIN":`INVENTORY::UNIT::${String(currentUser?.unit||"")}`;
+}
+function inventorySnapshotForCache(data){
+  const safe=JSON.parse(JSON.stringify(data||{}));
+  // Do not persist patient names/IDs from inventory-release transactions in the local snapshot.
+  safe.transactions=[];
+  safe._transactionsOmittedForPrivacy=true;
+  return safe;
+}
 
 
 function displayDateValue(v){
@@ -1349,24 +1388,51 @@ $("loginForm").addEventListener("submit",async e=>{
     token=out.token||"";
     currentUser=out.user;
     isOfflineSession=!!out.offline;
+    adminFullDataLoaded=false;
+    adminFullDataPromise=null;
     if(!out.offline){
       try{await rememberOfflineAccess(loginRole,loginRole==="ADMIN"?credentials.username:credentials.unit,credentials.password,out.user,out.token);}catch(storeErr){}
     }
     closeModal("loginModal");
+    cacheRefreshNoticeText="";setLocalCacheStatus("");
     showPrivateApp();
-    await loadRoleData();
-    await syncPendingReports();
+    showDashboardLoading();
     navigate("dashboard");
-    if(!isOfflineSession) await initFirebaseChat();
-    else await setOfflineSyncStatus("pending","● OFFLINE — You are using the last synchronized dashboard data");
+    await loadRoleData();
+    // The dashboard is already visible. Non-essential work must not block its first paint.
+    navigate("dashboard");
+    void syncPendingReports().then(result=>{
+      if(result && result.pending>0) scheduleOfflineSyncRetry();
+    }).catch(err=>console.warn("Background report sync failed after login.",err));
+    if(!isOfflineSession){
+      void initFirebaseChat().catch(err=>console.warn("Live Chat initialization failed after login.",err));
+      if(currentUser.role==="ADMIN"){
+        // Full reports/patients/user lists hydrate in the background for modules that need them.
+        window.setTimeout(()=>ensureAdminFullData().catch(err=>console.warn("Background Admin data hydration failed.",err)),700);
+      }
+    }else{
+      void setOfflineSyncStatus("pending","● OFFLINE — You are using the last synchronized dashboard data");
+    }
   }catch(err){
-    msg.textContent=err.message;
-    msg.classList.add("show");
+    const message=String(err?.message||err||"Login failed.");
+    if(currentUser && !$('privateView').classList.contains('hidden')){
+      const host=$("privateDashboard");
+      if(host) host.innerHTML=`<div class="card"><div class="notice" style="border-color:#fecaca;background:#fff7f7;color:#991b1b">Unable to load dashboard: ${esc(message)}</div><button type="button" class="btn primary" onclick="logout()">Return to Login</button></div>`;
+    }else{
+      msg.textContent=message;
+      msg.classList.add("show");
+    }
   }finally{
     btn.disabled=false;
     btn.textContent="Login";
   }
 });
+
+function showDashboardLoading(){
+  const host=$("privateDashboard");
+  if(!host) return;
+  host.innerHTML=`<div class="private-banner"><div class="small">ANTIPOLO CITY HEALTH OFFICE</div><h2>Oplan Kaluluwa 2026</h2><p>Preparing your authorized dashboard…</p></div><div class="card" style="margin-top:14px"><div class="notice"><b>Loading dashboard summary…</b><div style="margin-top:5px;font-size:10px;color:var(--muted)">Login successful. Fetching the latest available summary.</div></div></div>`;
+}
 
 function showPrivateApp(){
   $("publicView").classList.add("hidden");
@@ -1384,7 +1450,7 @@ function hidePrivateApp(){
   cleanupFirebaseChat();
   $("privateView").classList.add("hidden");
   $("publicView").classList.remove("hidden");
-  currentUser=null;token="";adminData=null;currentUnitData=null;
+  currentUser=null;token="";adminData=null;currentUnitData=null;adminFullDataLoaded=false;adminFullDataPromise=null;
 }
 
 function buildPrivateNav(){
@@ -1395,7 +1461,8 @@ function buildPrivateNav(){
     ["attendance","📸","Attendance Proof"],
     ["chat","💬","Live Chat"],
     ["report","📝","Submit Report"],
-    ["patients","🩺","PATIENTS / Records"]
+    ["patients","🩺","PATIENTS / Records"],
+    ["inventory","📦","Inventory (Health Commodities)"]
   ];
   let items=[...common];
   if(currentUser.role==="ADMIN"){
@@ -1415,31 +1482,97 @@ function buildPrivateNav(){
   updateChatUnreadBadge();
 }
 
+async function ensureAdminFullData(){
+  if(!currentUser || currentUser.role!=="ADMIN") return adminData;
+  if(adminFullDataLoaded && adminData && !adminData._dashboardOnly) return adminData;
+  if(adminFullDataPromise) return adminFullDataPromise;
+  adminFullDataPromise=(async()=>{
+    if(isOfflineSession || navigator.onLine===false){
+      const cache=await getOfflineRoleCache("ADMIN");
+      if(!cache || !cache.data || cache.data._dashboardOnly) throw new Error("Complete Admin records are not cached on this device. Reconnect and sign in online to load all Admin modules.");
+      adminData=cache.data;
+      adminFullDataLoaded=true;
+      applyReportTypesFromData(adminData);
+      populateUserUnitSelect();
+      return adminData;
+    }
+    const full=await apiGet("adminData",{token});
+    delete full._dashboardOnly;
+    adminData=full;
+    adminFullDataLoaded=true;
+    applyReportTypesFromData(adminData);
+    populateUserUnitSelect();
+    try{await cacheRoleDataForOffline("ADMIN",adminData);}catch(cacheError){console.warn("Unable to update offline Admin cache.",cacheError);}
+    return adminData;
+  })();
+  try{return await adminFullDataPromise;}
+  finally{adminFullDataPromise=null;}
+}
+
 async function loadRoleData(){
   if(!currentUser) return;
-  if(isOfflineSession){
-    const cache=await getOfflineRoleCache(currentUser.role);
-    if(!cache) throw new Error("No offline dashboard cache is available on this device. Please login online once.");
-    if(currentUser.role==="ADMIN"){
-      adminData=cache.data;
-      applyReportTypesFromData(adminData);
-      if(!Array.isArray(adminData.reports)) adminData.reports=[];
-      renderAdminDashboard();
-      populateUserUnitSelect();
-    }else{
-      currentUnitData=cache.data;
-      applyReportTypesFromData(currentUnitData);
-      if(!Array.isArray(currentUnitData.reports)) currentUnitData.reports=[];
-      renderLeaderDashboard();
+  const role=currentUser.role;
+  const isTL=role==="TEAM_LEADER";
+
+  // Offline login always uses a cached dataset scoped to the signed-in role/unit.
+  if(isOfflineSession || navigator.onLine===false){
+    if(role==="ADMIN"){
+      const cache=await getOfflineRoleCache("ADMIN");
+      if(!cache || !cache.data || cache.data._dashboardOnly || !Array.isArray(cache.data.units)) throw new Error("Complete Admin records are not cached on this device. Reconnect and sign in online to refresh the cache.");
+      adminData=cache.data;adminFullDataLoaded=true;applyReportTypesFromData(adminData);populateUserUnitSelect();renderAdminDashboard();
+      return;
     }
+    let cache=await getOfflineUnitCache(currentUser.unit);
+    if(!cache?.data?.unit?.name || String(cache.data.unit.name)!==String(currentUser.unit||"")){
+      const legacy=await getOfflineRoleCache("TEAM_LEADER");
+      cache=(legacy?.data?.unit?.name && String(legacy.data.unit.name)===String(currentUser.unit||""))?legacy:null;
+    }
+    if(!cache?.data) throw new Error("No offline cache is available for this Team Leader unit. Please login once while online.");
+    currentUnitData=cache.data;applyReportTypesFromData(currentUnitData);if(!Array.isArray(currentUnitData.reports))currentUnitData.reports=[];renderLeaderDashboard();
     return;
   }
-  if(currentUser.role==="ADMIN"){
-    adminData=await apiGet("adminData",{token});
-    applyReportTypesFromData(adminData);
-    await cacheRoleDataForOffline("ADMIN",adminData);
-    renderAdminDashboard();
-    populateUserUnitSelect();
+
+  // Cache-first for online sessions: login is already verified by the server before this runs.
+  // The cache is display-only; the server refresh below remains authoritative.
+  let warmCache=null;
+  try{
+    if(role==="ADMIN"){
+      const cache=await getOfflineRoleCache("ADMIN");
+      if(cache?.data && !cache.data._dashboardOnly && Array.isArray(cache.data.units) && cache.data.dashboard) warmCache=cache;
+    }else{
+      let cache=await getOfflineUnitCache(currentUser.unit);
+      if(!cache?.data?.unit?.name || String(cache.data.unit.name)!==String(currentUser.unit||"")){
+        const legacy=await getOfflineRoleCache("TEAM_LEADER");
+        cache=(legacy?.data?.unit?.name && String(legacy.data.unit.name)===String(currentUser.unit||""))?legacy:null;
+      }
+      if(cache?.data?.unit?.name && String(cache.data.unit.name)===String(currentUser.unit||"")) warmCache=cache;
+    }
+  }catch(cacheErr){console.warn("Unable to read the local dashboard cache; loading live data.",cacheErr);}
+
+  if(warmCache){
+    if(role==="ADMIN"){
+      adminData=warmCache.data;adminFullDataLoaded=true;applyReportTypesFromData(adminData);populateUserUnitSelect();renderAdminDashboard();
+    }else{
+      currentUnitData=warmCache.data;if(!Array.isArray(currentUnitData.reports))currentUnitData.reports=[];applyReportTypesFromData(currentUnitData);renderLeaderDashboard();
+    }
+    cacheRefreshNoticeText=`⚡ Showing saved local data from ${cacheTimestampLabel(warmCache.savedAt)} while the latest records refresh in the background. This snapshot may be outdated until refresh finishes.`;
+    setLocalCacheStatus(cacheRefreshNoticeText,"info");
+    void refreshRoleDataSilently();
+    return;
+  }
+
+  // No cache yet: use the normal live load, then save a snapshot for the next visit.
+  cacheRefreshNoticeText="";setLocalCacheStatus("");
+  if(role==="ADMIN"){
+    try{
+      const bootstrap=await apiGet("adminDashboardData",{token});
+      adminData=bootstrap;adminFullDataLoaded=false;applyReportTypesFromData(adminData);renderAdminDashboard();populateUserUnitSelect();
+    }catch(bootstrapError){
+      console.warn("Fast Admin dashboard endpoint failed; falling back to full Admin data.",bootstrapError);
+      adminData=await apiGet("adminData",{token});adminFullDataLoaded=true;applyReportTypesFromData(adminData);
+      try{await cacheRoleDataForOffline("ADMIN",adminData);}catch(cacheError){}
+      renderAdminDashboard();populateUserUnitSelect();
+    }
   }else{
     currentUnitData=await apiGet("unitData",{token,unit:currentUser.unit});
     applyReportTypesFromData(currentUnitData);
@@ -1453,63 +1586,62 @@ async function refreshRoleDataSilently(){
   if(!currentUser || !token || isOfflineSession || navigator.onLine===false || document.hidden) return;
   if(roleDataRefreshInFlight || Date.now()<roleRefreshPausedUntil) return;
   roleDataRefreshInFlight=true;
-  const role=currentUser.role;
-  const page=currentPage;
-  const savedPatientSearch=$("patientSearch")?.value||"";
-  const savedPatientUnit=$("patientUnitFilter")?.value||"";
-  const savedReportUnit=$("reportUnitFilter")?.value||"";
-  const savedReportType=$("reportTypeFilter")?.value||"";
-  const savedAdminUnit=currentUnitData?.unit?.name||"";
+  const sessionUser=currentUser, sessionToken=token, role=currentUser.role;
   try{
     if(role==="ADMIN"){
-      adminData=await apiGet("adminData",{token});
-      applyReportTypesFromData(adminData);
+      const fresh=await apiGet("adminData",{token:sessionToken});
+      if(currentUser!==sessionUser || token!==sessionToken) return;
+      // Capture the currently visible page and filters after the request completes so navigation stays responsive.
+      const page=currentPage;
+      const savedPatientSearch=$("patientSearch")?.value||"";
+      const savedPatientUnit=$("patientUnitFilter")?.value||"";
+      const savedReportUnit=$("reportUnitFilter")?.value||"";
+      const savedReportType=$("reportTypeFilter")?.value||"";
+      const savedAdminUnit=currentUnitData?.unit?.name||"";
+      adminData=fresh;adminFullDataLoaded=true;applyReportTypesFromData(adminData);populateUserUnitSelect();
       await cacheRoleDataForOffline("ADMIN",adminData);
-      if(page==="dashboard"){
-        renderAdminDashboard();
-      }else if(page==="patients"){
-        renderPatientRecordsPage();
-        if($("patientUnitFilter")) $("patientUnitFilter").value=savedPatientUnit;
-        if($("patientSearch")) $("patientSearch").value=savedPatientSearch;
-        filterPatientRecords();
+      cacheRefreshNoticeText="";if(page!=="inventory"&&page!=="attendance")setLocalCacheStatus("");
+      if(page==="dashboard")renderAdminDashboard();
+      else if(page==="patients"){
+        renderPatientRecordsPage();if($("patientUnitFilter"))$("patientUnitFilter").value=savedPatientUnit;if($("patientSearch"))$("patientSearch").value=savedPatientSearch;filterPatientRecords();
       }else if(page==="adminReports"){
-        renderAdminReports();
-        if($("reportUnitFilter")) $("reportUnitFilter").value=savedReportUnit;
-        if($("reportTypeFilter")) $("reportTypeFilter").value=savedReportType;
-        filterAdminReports();
+        renderAdminReports();if($("reportUnitFilter"))$("reportUnitFilter").value=savedReportUnit;if($("reportTypeFilter"))$("reportTypeFilter").value=savedReportType;filterAdminReports();
       }else if(page==="unit"){
-        if(adminUnitDetailOpen && savedAdminUnit){
-          currentUnitData=await apiGet("unitData",{token,unit:savedAdminUnit});
-          renderAdminUnitDetail();
-        }else{
-          renderAllUnits();
-        }
-      }else if(page==="report"){
+        if(adminUnitDetailOpen&&savedAdminUnit){
+          if(!adminUnitDetailLoadInFlight){
+            const detail=await apiGet("unitData",{token:sessionToken,unit:savedAdminUnit});
+            if(currentUser===sessionUser&&token===sessionToken&&currentPage==="unit"&&detail?.unit?.name===savedAdminUnit){currentUnitData=detail;await cacheOfflineUnitData(currentUnitData);renderAdminUnitDetail();setLocalCacheStatus("");}
+          }
+        }else renderAllUnits();
+      }else if(page==="duty")renderDutyPage();
+      else if(page==="personnel")renderPersonnelPage();
+      else if(page==="users")renderUsersPage();
+      else if(page==="driverDuty")renderDriverDutyPage();
+      else if(page==="report"){
         const selectedUnit=$("reportSite")?.value||savedAdminUnit||(adminData.units||[])[0]?.["Cemetery / Post"]||"";
-        if(selectedUnit) renderReportSummary(selectedUnit);
+        if(selectedUnit)renderReportSummary(selectedUnit);
       }
     }else if(role==="TEAM_LEADER"){
-      currentUnitData=await apiGet("unitData",{token,unit:currentUser.unit});
-      applyReportTypesFromData(currentUnitData);
-      await cacheRoleDataForOffline("TEAM_LEADER",currentUnitData);
-      await cacheOfflineUnitData(currentUnitData);
-      if(page==="dashboard"){
-        renderLeaderDashboard();
-      }else if(page==="patients"){
-        renderPatientRecordsPage();
-        if($("patientSearch")) $("patientSearch").value=savedPatientSearch;
-        filterPatientRecords();
-      }else if(page==="unit"){
-        renderLeaderUnit();
-      }else if(page==="report"){
-        renderReportSummary(currentUser.unit);
-      }
+      const fresh=await apiGet("unitData",{token:sessionToken,unit:sessionUser.unit});
+      if(currentUser!==sessionUser || token!==sessionToken) return;
+      const page=currentPage;
+      const savedPatientSearch=$("patientSearch")?.value||"";
+      currentUnitData=fresh;applyReportTypesFromData(currentUnitData);
+      await cacheRoleDataForOffline("TEAM_LEADER",currentUnitData);await cacheOfflineUnitData(currentUnitData);
+      cacheRefreshNoticeText="";if(page!=="inventory"&&page!=="attendance")setLocalCacheStatus("");
+      if(page==="dashboard")renderLeaderDashboard();
+      else if(page==="patients"){
+        renderPatientRecordsPage();if($("patientSearch"))$("patientSearch").value=savedPatientSearch;filterPatientRecords();
+      }else if(page==="unit")renderLeaderUnit();
+      else if(page==="report")renderReportSummary(sessionUser.unit);
     }
   }catch(err){
     console.warn("Automatic dashboard data refresh failed; keeping the last loaded data.",err);
-  }finally{
-    roleDataRefreshInFlight=false;
-  }
+    if(currentUser===sessionUser && cacheRefreshNoticeText){
+      cacheRefreshNoticeText="⚠ Showing the saved local snapshot; the latest server refresh failed. Displayed values may be outdated.";
+      setLocalCacheStatus(cacheRefreshNoticeText,"error");
+    }
+  }finally{roleDataRefreshInFlight=false;}
 }
 
 // Refresh server-backed counts and lists on open dashboards every 30 seconds.
@@ -1520,9 +1652,29 @@ document.addEventListener("visibilitychange",()=>{
 });
 
 function navigate(page){
+  if(!currentUser) return;
+  const adminDataPages=["unit","duty","attendance","report","patients","personnel","users","adminReports"];
+  if(currentUser.role==="ADMIN" && adminDataPages.includes(page) && !adminFullDataLoaded){
+    currentPage=page;
+    const targetId={unit:"unitPage",duty:"dutyPage",attendance:"attendancePage",report:"reportPage",patients:"patientsPage",personnel:"personnelPage",users:"usersPage",adminReports:"adminReportsPage"}[page];
+    document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+    if(targetId){$(targetId).classList.add("active");$(targetId).innerHTML=`<div class="card"><div class="notice"><b>Loading records…</b><div style="margin-top:5px;font-size:10px;color:var(--muted)">The dashboard is available. Preparing the detailed Admin records for this section.</div></div></div>`;}
+    document.querySelectorAll("#privateNav button").forEach(b=>b.classList.toggle("active",b.dataset.page===page));
+    const pendingTitle={unit:"All Units",duty:"Duty Schedule",attendance:"Attendance Photo Proof",report:"Submit Report",patients:"PATIENTS / Records",personnel:"Personnel / Duty",users:"User Access",adminReports:"All Reports"};
+    $("pageTitle").textContent=pendingTitle[page]||"Loading";
+    $("pageSub").textContent="Loading the latest authorized records";
+    $("sidebar").classList.remove("open");
+    ensureAdminFullData().then(()=>{
+      if(currentPage===page) navigate(page);
+    }).catch(err=>{
+      if(currentPage!==page || !targetId) return;
+      $(targetId).innerHTML=`<div class="card"><div class="notice" style="border-color:#fecaca;background:#fff7f7;color:#991b1b">Unable to load Admin records: ${esc(err.message||err)}</div><button type="button" class="btn primary" onclick="ensureAdminFullData().then(()=>navigate('${page}')).catch(e=>alert(e.message||e))">Retry</button></div>`;
+    });
+    return;
+  }
   currentPage=page;
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
-  const id={dashboard:"privateDashboard",unit:"unitPage",duty:"dutyPage",attendance:"attendancePage",driverDuty:"driverDutyPage",chat:"chatPage",report:"reportPage",patients:"patientsPage",personnel:"personnelPage",users:"usersPage",adminReports:"adminReportsPage"}[page];
+  const id={dashboard:"privateDashboard",unit:"unitPage",duty:"dutyPage",attendance:"attendancePage",driverDuty:"driverDutyPage",chat:"chatPage",report:"reportPage",patients:"patientsPage",inventory:"inventoryPage",personnel:"personnelPage",users:"usersPage",adminReports:"adminReportsPage"}[page];
   if(id) $(id).classList.add("active");
   document.querySelectorAll("#privateNav button").forEach(b=>b.classList.toggle("active",b.dataset.page===page));
   const titles={
@@ -1534,6 +1686,7 @@ function navigate(page){
     chat:["Live Chat","Real-time coordination for authorized users"],
     report:["Submit Report","Team Leader / authorized reporting"],
     patients:[currentUser.role==="ADMIN"?"PATIENTS / Records":"My Patients","Authorized patient records from all reports"],
+    inventory:["Inventory (Health Commodities)",currentUser.role==="ADMIN"?"Central stock management and unit distribution":"Stock list and patient releases for your locked unit"],
     personnel:["Personnel / Duty","Admin management of staff assignments"],
     users:["User Access","Admin management of Team Leader accounts"],
     adminReports:["All Reports","Central report monitoring"]
@@ -1548,6 +1701,7 @@ function navigate(page){
   if(page==="chat") renderChatPage();
   if(page==="report") renderReportPage();
   if(page==="patients") renderPatientRecordsPage();
+  if(page==="inventory") renderInventoryPage();
   if(page==="personnel") renderPersonnelPage();
   if(page==="users") renderUsersPage();
   if(page==="adminReports") renderAdminReports();
@@ -1817,11 +1971,61 @@ async function saveAttendanceEvent(side){
   }catch(err){alert(err.message||String(err));}
   finally{button.disabled=false;button.textContent=oldText;}
 }
+async function readCachedAttendanceSnapshot(){
+  const c=await getOfflineRecord(OFFLINE_CACHE_STORE,attendanceCacheKey()).catch(()=>null);
+  if(!c||!Array.isArray(c.data))return null;
+  const server=c.data;
+  const deletedRecords=Array.isArray(c.deletedRecords)?c.deletedRecords:[];
+  attendanceDeletedRecords=deletedRecords;
+  let local=await getAllLocalAttendance().catch(()=>[]);
+  if(deletedRecords.length){
+    for(const r of local){
+      if(currentUser?.role==='TEAM_LEADER'&&String(r.unit)!==String(currentUser.unit))continue;
+      if(deletedAttendanceApplies(r,deletedRecords))await deleteLocalAttendance(r.attendanceId).catch(()=>{});
+    }
+    local=await getAllLocalAttendance().catch(()=>[]);
+  }
+  const map=new Map(server.map(r=>[String(r.attendanceId),r]));
+  for(const r of local){
+    if(currentUser?.role==='TEAM_LEADER'&&String(r.unit)!==String(currentUser.unit))continue;
+    const remote=map.get(String(r.attendanceId));
+    if(!remote){map.set(String(r.attendanceId),r);continue;}
+    map.set(String(r.attendanceId),{...remote,...r,
+      photoInFileId:r.photoInFileId||remote.photoInFileId||'',photoOutFileId:r.photoOutFileId||remote.photoOutFileId||'',
+      timeInServerAt:r.timeInServerAt||remote.timeInServerAt||'',timeOutServerAt:r.timeOutServerAt||remote.timeOutServerAt||'',
+      localStatus:r.localStatus||'SYNCED'});
+  }
+  let records=[...map.values()];
+  if(currentUser?.role==='TEAM_LEADER')records=records.filter(r=>String(r.unit)===String(currentUser.unit));
+  records.sort((a,b)=>String(b.dutyDate||'').localeCompare(String(a.dutyDate||''))||String(b.timeInDeviceAt||'').localeCompare(String(a.timeInDeviceAt||'')));
+  return {records,savedAt:c.savedAt||0};
+}
 async function renderAttendancePage(){
+  const page=$('attendancePage');if(!page||!currentUser)return;
+  const sessionUser=currentUser,sessionToken=token;
+  if(!isOfflineSession&&navigator.onLine!==false){
+    const cached=await readCachedAttendanceSnapshot().catch(()=>null);
+    if(cached&&currentUser===sessionUser&&token===sessionToken){
+      renderAttendancePageContent(cached.records,false);
+      setLocalCacheStatus(`⚡ Showing saved attendance from ${cacheTimestampLabel(cached.savedAt)} while the server refreshes. Pending local records and photo proof remain on this device.`,"info");
+      // Never let a late response from a previous user overwrite the active session's page.
+      void readServerAttendance().then(records=>{
+        if(currentUser!==sessionUser||token!==sessionToken||currentPage!=="attendance")return;
+        renderAttendancePageContent(records,true);
+        setLocalCacheStatus("");
+      }).catch(err=>{
+        if(currentUser===sessionUser&&token===sessionToken&&currentPage==="attendance")setLocalCacheStatus("⚠ Live attendance refresh failed. Showing the saved snapshot; verify server status before relying on the latest count.","error");
+      });
+      return;
+    }
+  }
+  const records=await readServerAttendance();
+  if(currentUser===sessionUser&&token===sessionToken)renderAttendancePageContent(records,true);
+}
+function renderAttendancePageContent(records,scheduleSync=true){
   const page=$('attendancePage');if(!page||!currentUser)return;
   const units=attendanceUnitList();const isAdmin=currentUser.role==='ADMIN';
   if(isAdmin&&attendanceSelectedUnit!=='ALL'&&!units.some(u=>u.name===attendanceSelectedUnit))attendanceSelectedUnit='ALL';
-  const records=await readServerAttendance();
   const selectedUnit=isAdmin?(attendanceSelectedUnit==='ALL'?'ALL':attendanceSelectedUnit):String(currentUser.unit||'');
   const unitsNav=isAdmin?`<div class="attendance-unit-nav"><button type="button" data-att-unit="ALL" class="${selectedUnit==='ALL'?'active':''}">All Units</button>${units.map(u=>`<button type="button" data-att-unit="${esc(u.name)}" class="${selectedUnit===u.name?'active':''}">Unit ${u.group} · ${esc(u.name)}</button>`).join('')}</div>`:`<div class="attendance-lock-note">🔒 <b>UNIT LOCKED</b> — ${esc(currentUser.unit)}. All attendance records and photo access are restricted to your assigned unit.</div>`;
   const visibleRecords=records.filter(r=>selectedUnit==='ALL'||String(r.unit)===selectedUnit);
@@ -1859,7 +2063,7 @@ async function renderAttendancePage(){
   const knownShift=$('attendanceShift').value;
   const known=visibleRecords.find(r=>String(r.unit||'')===String(knownUnit)&&String(r.dutyDate||'')===String(knownDate)&&String(r.shiftId||'')===String(knownShift));
   if(known){if(known.remarksIn)$('attendanceRemarksIn').value=known.remarksIn;if(known.remarksOut)$('attendanceRemarksOut').value=known.remarksOut;if(known.personnelPresent?.length){const set=new Set(known.personnelPresent);document.querySelectorAll('.attendance-person-check').forEach(c=>c.checked=set.has(c.value));}}
-  scheduleAttendanceAutoSync('Attendance page opened');
+  if(scheduleSync)scheduleAttendanceAutoSync('Attendance page opened');
 }
 function renderAttendanceRecordCard(r){
   const status=r.localStatus==='SYNCED'?'synced':'pending';
@@ -2037,36 +2241,35 @@ function renderAdminDashboard(){
       </div>`).join("")}</div>
     </div><div id="unitConnectivity"></div>
     <div class="card" style="margin-top:14px"><div class="section-head"><div><h2>Report Type Settings</h2><p>Add or remove report categories here. Saved options update future submissions and report summaries.</p></div><button type="button" class="btn primary" onclick="openReportTypeManager()">⚙ Manage Report Types</button></div><div class="report-type-chip-list">${REPORT_TYPE_OPTIONS.map(type=>`<span class="report-type-chip">${esc(type)}</span>`).join("")}</div></div>
-    <div class="card" style="margin-top:14px"><div class="section-head"><div><h2>📸 Attendance Photo Proof</h2><p>Time In/Out and supporting photo evidence across all deployment units.</p></div><button type="button" class="btn primary" onclick="navigate('attendance')">Open Attendance</button></div><div id="attendanceDashboardSummary"><div class="notice">Loading attendance summary…</div></div></div>`;
+    <div class="card" style="margin-top:14px"><div class="section-head"><div><h2>📸 Attendance Photo Proof</h2><p>Time In/Out and supporting photo evidence across all deployment units.</p></div><button type="button" class="btn primary" onclick="navigate('attendance')">Open Attendance</button></div><div id="attendanceDashboardSummary"><div class="notice">Loading attendance summary…</div></div></div>
+    <div class="card inventory-shortcut" style="margin-top:14px"><div class="section-head"><div><h2>📦 Inventory (Health Commodities)</h2><p>Manage central stock, receive commodities, and distribute stock to all units or a selected unit.</p></div><button type="button" class="btn primary" onclick="navigate('inventory')">Open Inventory</button></div></div>`;
   renderUnitConnectivity();
   loadAttendanceDashboardSummary().catch(()=>{});
 }
 
+function buildAdminUnitSnapshotFromCache(index,unit){
+  const u=adminData?.units?.[index]||{};
+  const dutyRows=(adminData?.assignments||[]).filter(r=>String(r.cemetery||"")===String(unit||"")).map(r=>({
+    "Group":r.group,"Cemetery / Post":r.cemetery,"Team Leader":r.teamLeader,"Shift ID":r.shiftId,"Shift / Time":r.shift,"Date / Coverage":r.date,"Personnel Name":r.personnelName
+  }));
+  const summary=(adminData?.dashboard?.units||[]).find(x=>String(x.cemetery||"")===String(unit||""))||{};
+  const patients=(adminData?.patients||[]).filter(p=>String(p.cemetery||"")===String(unit||""));
+  return {ok:true,session:currentUser,unit:{name:unit,group:u.Group||u.group||"",covered:String(u["Covered Locations"]||"").split(" | ").filter(Boolean),teamLeader:u["Team Leader"]||"",status:u.Status||"ACTIVE"},duty:dutyRows,driverDuty:adminData?.driverDuty||[],reports:[],patients,patientRecordCount:patients.length,reportTotals:{totalReports:Number(summary.totalReports||0),totalPersons:Number(summary.totalPersons||0)}};
+}
 async function adminOpenUnit(index){
   if(!adminData || !adminData.units || !adminData.units[index]) return;
   const unit=adminData.units[index]["Cemetery / Post"];
+  const sessionUser=currentUser,sessionToken=token;
+  const offline=isOfflineSession||navigator.onLine===false;
   try{
-    if(isOfflineSession || navigator.onLine===false){
-      const cached=await getOfflineUnitCache(unit);
-      if(cached?.data){
-        currentUnitData=cached.data;
-        currentUnitData.reports=[];
-        renderAdminUnitDetail();
-      }else{
-        const u=adminData.units[index]||{};
-        const dutyRows=(adminData.assignments||[]).filter(r=>r.cemetery===unit).map(r=>({
-          "Group":r.group,"Cemetery / Post":r.cemetery,"Team Leader":r.teamLeader,"Shift ID":r.shiftId,"Shift / Time":r.shift,"Date / Coverage":r.date,"Personnel Name":r.personnelName
-        }));
-        const summary=(adminData.dashboard?.units||[]).find(x=>x.cemetery===unit)||{};
-        currentUnitData={ok:true,session:currentUser,unit:{name:unit,group:u.Group||"",covered:String(u["Covered Locations"]||"").split(" | ").filter(Boolean),teamLeader:u["Team Leader"]||"",status:u.Status||"ACTIVE"},duty:dutyRows,driverDuty:adminData.driverDuty||[],reports:[],patients:(adminData.patients||[]).filter(p=>String(p.cemetery||"")===String(unit)),patientRecordCount:(adminData.patients||[]).filter(p=>String(p.cemetery||"")===String(unit)).length,reportTotals:{totalReports:Number(summary.totalReports||0),totalPersons:Number(summary.totalPersons||0)}};
-        renderAdminUnitDetail();
-      }
-    }else{
-      currentUnitData=await apiGet("unitData",{token,unit});
-      await cacheOfflineUnitData(currentUnitData);
-    }
-    currentPage="unit";
-    adminUnitDetailOpen=true;
+    let cache=null;
+    if(offline||navigator.onLine!==false)cache=await getOfflineUnitCache(unit).catch(()=>null);
+    const hasUnitCache=!!(cache?.data?.unit?.name&&String(cache.data.unit.name)===String(unit));
+    if(hasUnitCache){currentUnitData=cache.data;currentUnitData.reports=[];}
+    else currentUnitData=buildAdminUnitSnapshotFromCache(index,unit);
+
+    // Display the cached/derived unit snapshot immediately instead of waiting on the unitData API.
+    currentPage="unit";adminUnitDetailOpen=true;
     document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
     $("unitPage").classList.add("active");
     document.querySelectorAll("#privateNav button").forEach(b=>b.classList.toggle("active",b.dataset.page==="unit"));
@@ -2075,6 +2278,21 @@ async function adminOpenUnit(index){
     $("sidebar").classList.remove("open");
     renderAdminUnitDetail();
     window.scrollTo({top:0,behavior:"smooth"});
+
+    if(offline)return;
+    const savedAt=hasUnitCache?cache.savedAt:0;
+    setLocalCacheStatus(hasUnitCache?`⚡ Showing saved unit details from ${cacheTimestampLabel(savedAt)} while the latest unit records refresh.`:`⚡ Showing the available unit snapshot while loading its latest detailed records.`,"info");
+    adminUnitDetailLoadInFlight=true;
+    void apiGet("unitData",{token:sessionToken,unit}).then(async fresh=>{
+      if(currentUser!==sessionUser||token!==sessionToken)return;
+      await cacheOfflineUnitData(fresh);
+      if(currentPage==="unit"&&adminUnitDetailOpen&&String(currentUnitData?.unit?.name||"")===String(unit)){
+        currentUnitData=fresh;renderAdminUnitDetail();setLocalCacheStatus("");
+      }
+    }).catch(err=>{
+      console.warn("Unit detail background refresh failed; keeping the local snapshot.",err);
+      if(currentUser===sessionUser&&token===sessionToken&&currentPage==="unit"&&String(currentUnitData?.unit?.name||"")===String(unit))setLocalCacheStatus("⚠ Live unit refresh failed. This view uses a saved snapshot and may be outdated.","error");
+    }).finally(()=>{adminUnitDetailLoadInFlight=false;});
   }catch(e){
     alert("Unable to open unit: "+(e.message||e));
   }
@@ -2151,7 +2369,8 @@ function renderLeaderDashboard(){
     <div id="unitConnectivity"></div>
     <div class="card" style="margin-top:14px">${renderAllTeamLeaders(currentUnitData.duty)}</div>
     <div class="card"><div class="section-head"><div><h2>Report Summary</h2><p>Counts for your locked unit.</p></div></div><div class="mini-cards">${renderReportTypeMiniCards(t)}</div></div>
-    <div class="card" style="margin-top:14px"><div class="section-head"><div><h2>📸 My Unit Attendance Proof</h2><p>Group photo, Time In/Out and offline sync status for your locked unit.</p></div><button type="button" class="btn primary" onclick="navigate('attendance')">Open Attendance</button></div><div id="attendanceDashboardSummary"><div class="notice">Loading attendance summary…</div></div></div>`;
+    <div class="card" style="margin-top:14px"><div class="section-head"><div><h2>📸 My Unit Attendance Proof</h2><p>Group photo, Time In/Out and offline sync status for your locked unit.</p></div><button type="button" class="btn primary" onclick="navigate('attendance')">Open Attendance</button></div><div id="attendanceDashboardSummary"><div class="notice">Loading attendance summary…</div></div></div>
+    <div class="card inventory-shortcut" style="margin-top:14px"><div class="section-head"><div><h2>📦 My Unit Health Commodities</h2><p>View available stock, track releases, and record supplies issued to patients.</p></div><button type="button" class="btn primary" onclick="navigate('inventory')">Open Unit Inventory</button></div></div>`;
   renderUnitConnectivity();
   loadAttendanceDashboardSummary().catch(()=>{});
 }
@@ -2329,6 +2548,11 @@ function renderReportPage(){
 function renderReportSummary(unit){
   let t;
   let historicalTypes=[];
+  if(currentUser.role==="ADMIN" && cacheRefreshNoticeText && !(adminData?.reports||[]).length){
+    const summary=(adminData?.dashboard?.units||[]).find(x=>String(x.cemetery||"")===String(unit||""))||{};
+    $("reportSummaryBox").innerHTML=`<div class="summary-list"><div class="sum"><span>Total Reports (saved summary)</span><b>${Number(summary.totalReports||0)}</b></div><div class="sum"><span>Persons Assisted (saved summary)</span><b>${Number(summary.totalPersons||0)}</b></div></div><div class="notice" style="margin-top:10px">Detailed report rows are being refreshed from the server; they are not included in the local cache.</div>`;
+    return;
+  }
   if(currentUser.role==="TEAM_LEADER"){
     t=currentUnitData?.reportTotals;
     historicalTypes=(currentUnitData?.reports||[]).map(r=>String(r.type||"").trim()).filter(Boolean);
@@ -2988,6 +3212,10 @@ async function removeReportType(name){
 
 function renderAdminReports(){
   const rows=adminData.reports||[];
+  if(!isOfflineSession && cacheRefreshNoticeText && !rows.length){
+    $("adminReportsPage").innerHTML=`<div class="section-head"><div><h2>All Reports</h2><p>Central report monitoring.</p></div></div><div class="card"><div class="notice">The local cache does not include detailed report rows. Loading the latest authorized report list from the server so this page does not mistakenly show “no reports.”</div></div>`;
+    return;
+  }
   if(isOfflineSession){
     $("adminReportsPage").innerHTML=`<div class="section-head"><div><h2>All Reports</h2><p>Central report monitoring.</p></div></div><div class="card"><div class="offline-mode-banner" style="margin:0">📵 OFFLINE MODE<small>Detailed All Reports are available online after the latest data sync. New reports can still be saved locally.</small></div></div>`;
     return;
@@ -3638,9 +3866,223 @@ async function sendFirebaseChatMessage(e){
   finally{$("firebaseChatSend").disabled=false;input.focus();}
 }
 
+/* =========================
+   HEALTH COMMODITIES INVENTORY UI
+   All stock-changing requests go to server-side validation; no offline stock writes.
+   ========================= */
+let inventoryPageData = null;
+
+function inventoryQty(v){
+  const n=Number(v||0);
+  return Number.isFinite(n)?n.toLocaleString(undefined,{maximumFractionDigits:2}):"0";
+}
+function inventoryTimestamp(v){
+  const s=String(v||"").trim();
+  if(!s) return "—";
+  const d=new Date(s.replace(" ","T"));
+  return Number.isNaN(d.getTime())?s:d.toLocaleString();
+}
+function inventorySafeText(v){return esc(v==null?"":v)}
+function inventoryItemOptions({allowZero=true}={}){
+  const items=(inventoryPageData?.items||[]).filter(x=>String(x.status||"ACTIVE").toUpperCase()==="ACTIVE");
+  if(!items.length) return '<option value="">No active commodities — add an item first</option>';
+  return '<option value="">Select health commodity</option>'+items.map(x=>{
+    const qty=currentUser?.role==="ADMIN"?Number(x.centralStock||0):Number(x.unitStock||0);
+    const unit=String(x.unit||"");
+    const disabled=!allowZero&&qty<=0;
+    return `<option value="${esc(x.itemId)}" ${disabled?'disabled':''}>${esc(x.name)} — available ${inventoryQty(qty)} ${esc(unit)}</option>`;
+  }).join("");
+}
+function inventoryUnitsOptions(selected=""){
+  return '<option value="">Select deployment unit</option>'+(inventoryPageData?.units||[]).map(u=>`<option value="${esc(u.name)}" ${u.name===selected?'selected':''}>${esc(u.name)}</option>`).join("");
+}
+function inventoryTable(rows,isAdmin){
+  if(!rows?.length) return '<div class="inventory-empty">No health commodities have been added yet.</div>';
+  return `<div class="table-wrap"><table class="inventory-table"><thead><tr><th>Health Commodity</th><th>Category</th><th>UOM</th>${isAdmin?'<th>Central Stock</th><th>Stock in Units</th><th>Total Available</th>':'<th>Current Unit Stock</th><th>Stock Status</th>'}<th>Reorder Level</th>${isAdmin?'<th>Actions</th>':''}</tr></thead><tbody>${rows.map(x=>{
+    const currentBalance=Number(isAdmin?x.centralStock:(x.unitStock||0));
+    const low=Number(x.reorderLevel||0)>0 && currentBalance<=Number(x.reorderLevel||0);
+    const outOfStock=!isAdmin && currentBalance<=0;
+    const unitBreakdown=isAdmin?(x.stockByUnit||[]).filter(b=>Number(b.stock)>0).map(b=>`${b.unit}: ${inventoryQty(b.stock)}`).join('\n'):' ';
+    return `<tr><td><b>${esc(x.name)}</b>${x.description?`<small class="inventory-subtext">${esc(x.description)}</small>`:''}<small class="inventory-subtext">${esc(x.itemId)}</small></td><td>${esc(x.category||'General')}</td><td>${esc(x.unit)}</td>${isAdmin?`<td><b>${inventoryQty(x.centralStock)}</b></td><td title="${esc(unitBreakdown)}">${inventoryQty(x.deployedStock)}${unitBreakdown?`<small class="inventory-subtext">Hover for unit breakdown</small>`:''}</td><td><b>${inventoryQty(x.totalAvailable)}</b></td>`:`<td><b>${inventoryQty(x.unitStock)}</b> ${esc(x.unit)}</td><td><span class="inventory-stock-status ${outOfStock?'out':low?'low':'ok'}">${outOfStock?'OUT OF STOCK':low?'LOW STOCK':'AVAILABLE'}</span></td>`}<td>${inventoryQty(x.reorderLevel)} ${esc(x.unit)}</td>${isAdmin?`<td><div class="actions"><button type="button" class="btn" onclick="editInventoryItem('${esc(x.itemId)}')">Edit</button><button type="button" class="btn danger" onclick="deleteInventoryItem('${esc(x.itemId)}')">Delete</button></div></td>`:''}</tr>`;
+  }).join('')}</tbody></table></div>`;
+}
+function inventoryTransactionsTable(rows,isAdmin){
+  if(!rows?.length) return inventoryPageData?._transactionsOmittedForPrivacy?'<div class="inventory-empty">Transaction history is not stored in the local cache for privacy. Live history will appear after the server refresh.</div>':'<div class="inventory-empty">No inventory transactions recorded yet.</div>';
+  return `<div class="table-wrap"><table class="inventory-table"><thead><tr><th>Date / Time</th><th>Transaction</th><th>Health Commodity</th><th>Quantity</th><th>From</th><th>To</th><th>Patient</th><th>Recorded By</th>${isAdmin?'<th>Notes</th>':''}</tr></thead><tbody>${rows.map(t=>`<tr><td>${esc(inventoryTimestamp(t.timestamp))}</td><td><span class="inventory-tx-badge ${String(t.type).toLowerCase()==='release_to_patient'?'release':String(t.type).toLowerCase()==='stock_in'?'stockin':'distribute'}">${esc(String(t.type||'').replaceAll('_',' '))}</span></td><td><b>${esc(t.itemName)}</b><small class="inventory-subtext">${esc(t.itemId)}</small></td><td><b>${inventoryQty(t.quantity)}</b> ${esc(t.unit)}</td><td>${esc(t.fromLocation||'—')}</td><td>${esc(t.toLocation||'—')}</td><td>${t.patientName?`${esc(t.patientName)}${t.patientId?`<small class="inventory-subtext">ID: ${esc(t.patientId)}</small>`:''}`:'—'}</td><td>${esc(t.recordedBy||'—')}</td>${isAdmin?`<td>${esc(t.notes||'—')}</td>`:''}</tr>`).join('')}</tbody></table></div>`;
+}
+
+async function renderInventoryPage(){
+  const host=$("inventoryPage");
+  if(!host)return;
+  if(isOfflineSession || navigator.onLine===false){
+    host.innerHTML=`<div class="section-head"><div><h2>📦 Inventory (Health Commodities)</h2><p>${currentUser?.role==='ADMIN'?'Central stock management':'Stock for '+esc(currentUser?.unit||'your unit')}</p></div></div><div class="card"><div class="notice">Inventory needs an online connection to confirm live balances and prevent duplicate or negative stock movements. Reconnect to refresh balances before viewing transaction history or recording stock changes.</div><button type="button" class="btn primary" onclick="renderInventoryPage()">Retry</button></div>`;
+    return;
+  }
+  const scopeKey=inventoryCacheKeyForCurrentUser();
+  const sessionUser=currentUser, sessionToken=token;
+  let cachedRendered=false;
+  host.innerHTML='<div class="card"><div class="inventory-loading">Checking saved inventory snapshot…</div></div>';
+  try{
+    const cache=await getOfflineRecord(OFFLINE_CACHE_STORE,scopeKey);
+    if(cache?.data && currentUser===sessionUser && token===sessionToken && currentPage==="inventory"){
+      inventoryPageData=cache.data;
+      if(currentUser.role==='ADMIN')renderAdminInventory();else renderUnitInventory();
+      const msg=`⚡ Showing saved stock balances from ${cacheTimestampLabel(cache.savedAt)} while live balances refresh. Cached movement history is omitted from local storage; stock changes are still validated by the server.`;
+      setLocalCacheStatus(msg,"info");cachedRendered=true;
+    }
+  }catch(cacheErr){console.warn("Unable to read cached inventory snapshot.",cacheErr);}
+  try{
+    const fresh=await apiGet('inventoryData',{token:sessionToken});
+    if(currentUser!==sessionUser || token!==sessionToken)return;
+    inventoryPageData=fresh;
+    try{await putOfflineRecord(OFFLINE_CACHE_STORE,{key:scopeKey,savedAt:Date.now(),data:inventorySnapshotForCache(fresh)});}catch(cacheErr){console.warn("Unable to save inventory display cache.",cacheErr);}
+    if(currentPage==="inventory"){
+      if(currentUser.role==='ADMIN')renderAdminInventory();else renderUnitInventory();
+      setLocalCacheStatus("");
+    }
+  }catch(e){
+    if(cachedRendered){
+      setLocalCacheStatus("⚠ Live inventory refresh failed. Displayed balances may be outdated; stock transactions require successful server confirmation.","error");
+      return;
+    }
+    if(currentUser===sessionUser && currentPage==="inventory")host.innerHTML=`<div class="section-head"><div><h2>📦 Inventory (Health Commodities)</h2><p>Live stock records</p></div><button type="button" class="btn" onclick="renderInventoryPage()">↻ Retry</button></div><div class="card"><div class="notice" style="border-color:#fecaca;background:#fff7f7;color:#991b1b">Unable to load inventory: ${esc(e.message||e)}</div><p style="color:var(--muted);font-size:10px">Inventory sheets are created automatically when this module opens for the first time. If the error mentions sheet headers, rename the conflicting sheet after backing it up.</p></div>`;
+  }
+}
+
+function renderAdminInventory(){
+  const d=inventoryPageData||{};
+  const items=(d.items||[]).filter(x=>String(x.status||'ACTIVE').toUpperCase()!=='DELETED');
+  const active=items.filter(x=>String(x.status).toUpperCase()==='ACTIVE');
+  const totalCentral=active.reduce((sum,x)=>sum+(Number(x.centralStock)||0),0);
+  const totalUnitStock=active.reduce((sum,x)=>sum+(Number(x.deployedStock)||0),0);
+  const activeUnitCount=(d.units||[]).length;
+  $('inventoryPage').innerHTML=`
+    <div class="section-head"><div><h2>📦 Inventory (Health Commodities)</h2><p>Admin central store • catalog management • stock-in • distribution and audit trail</p></div><button type="button" class="btn" onclick="renderInventoryPage()">↻ Refresh</button></div>
+    <div class="inventory-hero"><div><span>Central Stock</span><strong>${inventoryQty(active.reduce((sum,x)=>sum+(Number(x.centralStock)>0?1:0),0))} stocked items</strong><small>Quantities are tracked separately by unit of measure.</small></div><div class="inventory-hero-icon">📦</div></div>
+    <div class="kpis inventory-kpis"><div class="kpi"><div class="kpi-icon">🧾</div><div><label>Active Commodities</label><strong>${active.length}</strong><small>Catalog items</small></div></div><div class="kpi"><div class="kpi-icon">🏥</div><div><label>Central Stock Lines</label><strong>${d.summary?.centralStockLines||0}</strong><small>Items with central balance</small></div></div><div class="kpi"><div class="kpi-icon">📍</div><div><label>Units with Stock</label><strong>${d.summary?.unitsWithStock||0} / ${activeUnitCount}</strong><small>At least one commodity in stock</small></div></div><div class="kpi"><div class="kpi-icon">↔</div><div><label>Ledger Entries</label><strong>${d.summary?.totalTransactionRows||0}</strong><small>All stock movements</small></div></div></div>
+    <div class="card inventory-card"><div class="section-head"><div><h2>Health Commodity Catalog &amp; Stock Balances</h2><p>Add, edit, or remove catalog items and review central/unit quantities. Historical transactions are preserved.</p></div></div>
+      <form id="inventoryItemForm" class="inventory-form-grid" onsubmit="event.preventDefault();saveInventoryItem()">
+        <input type="hidden" id="inventoryItemId">
+        <div class="field"><label for="inventoryItemName">Health Commodity <span>*</span></label><input id="inventoryItemName" required maxlength="150" placeholder="e.g. Paracetamol 500 mg"></div>
+        <div class="field"><label for="inventoryItemCategory">Category</label><input id="inventoryItemCategory" maxlength="80" placeholder="Medicine, first aid, PPE"></div>
+        <div class="field"><label for="inventoryItemUnit">Unit of Measure <span>*</span></label><input id="inventoryItemUnit" required maxlength="30" value="pcs" placeholder="pcs, box, bottle, pack"></div>
+        <div class="field"><label for="inventoryReorderLevel">Reorder Level</label><input id="inventoryReorderLevel" type="number" min="0" step="0.01" value="0"></div>
+        <div class="field inventory-span-two"><label for="inventoryItemDescription">Description / Strength (optional)</label><input id="inventoryItemDescription" maxlength="240" placeholder="Strength, size, specifications or notes"></div>
+        <div class="inventory-form-actions"><button type="button" class="btn" onclick="resetInventoryItemForm()">Clear</button><button type="submit" class="btn primary" id="inventoryItemSaveBtn">＋ Add Item</button></div>
+      </form>
+      ${inventoryTable(items,true)}
+    </div>
+    <div class="inventory-two-col">
+      <div class="card inventory-card"><div class="section-head"><div><h2>＋ Add Stock to Central Store</h2><p>Record new/replenished stock. This increases Central Store balance.</p></div></div>
+        <form class="inventory-form-stack" onsubmit="event.preventDefault();receiveInventoryStock()">
+          <div class="field"><label for="inventoryReceiveItem">Health Commodity <span>*</span></label><select id="inventoryReceiveItem" required>${inventoryItemOptions({allowZero:true})}</select></div>
+          <div class="field"><label for="inventoryReceiveQty">Quantity Received <span>*</span></label><input id="inventoryReceiveQty" type="number" min="0.01" step="0.01" required placeholder="Enter quantity"></div>
+          <div class="field"><label for="inventoryReceiveNotes">Reference / Remarks</label><input id="inventoryReceiveNotes" maxlength="240" placeholder="Delivery, reference no., batch/expiry note"></div>
+          <button type="submit" class="btn primary">Save Stock-In</button>
+        </form>
+      </div>
+      <div class="card inventory-card"><div class="section-head"><div><h2>⇢ Distribute Stock</h2><p>Distribute to one unit or every active unit. “All Units” uses the quantity per unit.</p></div></div>
+        <form class="inventory-form-stack" onsubmit="event.preventDefault();distributeInventoryStock()">
+          <div class="field"><label for="inventoryDistributeItem">Health Commodity <span>*</span></label><select id="inventoryDistributeItem" required>${inventoryItemOptions({allowZero:true})}</select></div>
+          <div class="field"><label for="inventoryDistributionMode">Distribution Destination</label><select id="inventoryDistributionMode" onchange="updateInventoryDistributionMode()"><option value="UNIT">One Deployment Unit</option><option value="ALL">All Active Units</option></select></div>
+          <div class="field" id="inventoryDistributionUnitWrap"><label for="inventoryDistributionUnit">Deployment Unit <span>*</span></label><select id="inventoryDistributionUnit">${inventoryUnitsOptions()}</select></div>
+          <div class="field"><label for="inventoryDistributeQty">Quantity <span>*</span></label><input id="inventoryDistributeQty" type="number" min="0.01" step="0.01" required placeholder="Quantity for selected unit"></div>
+          <div class="field"><label for="inventoryDistributeNotes">Remarks</label><input id="inventoryDistributeNotes" maxlength="240" placeholder="Optional distribution note"></div>
+          <div class="notice" id="inventoryDistributionHelp">One unit: quantity is the total sent to that unit.</div>
+          <button type="submit" class="btn primary">Confirm Distribution</button>
+        </form>
+      </div>
+    </div>
+    <div class="card inventory-card"><div class="section-head"><div><h2>Stock Movement Ledger</h2><p>Latest ${Math.min(200,(d.transactions||[]).length)} entries shown. Transactions are preserved for audit.</p></div></div>${inventoryTransactionsTable(d.transactions||[],true)}</div>`;
+  updateInventoryDistributionMode();
+}
+function renderUnitInventory(){
+  const d=inventoryPageData||{};
+  const items=(d.items||[]).filter(x=>String(x.status||'ACTIVE').toUpperCase()==='ACTIVE');
+  const stocked=items.filter(x=>Number(x.unitStock||0)>0).length;
+  const low=items.filter(x=>Number(x.reorderLevel||0)>0&&Number(x.unitStock||0)<=Number(x.reorderLevel||0)).length;
+  $('inventoryPage').innerHTML=`
+    <div class="section-head"><div><h2>📦 Inventory (Health Commodities)</h2><p>Unit stock and patient release records • <b>${esc(d.unit||currentUser.unit)}</b></p></div><button type="button" class="btn" onclick="renderInventoryPage()">↻ Refresh</button></div>
+    <div class="inventory-hero"><div><span>Locked Deployment Unit</span><strong>${esc(d.unit||currentUser.unit)}</strong><small>Only this unit's stock balances and transaction records are accessible to your Team Leader account.</small></div><div class="inventory-hero-icon">🏥</div></div>
+    <div class="kpis inventory-kpis"><div class="kpi"><div class="kpi-icon">📦</div><div><label>Commodities in Stock</label><strong>${stocked}</strong><small>Items with available unit stock</small></div></div><div class="kpi"><div class="kpi-icon">⚠️</div><div><label>Low Stock Items</label><strong>${low}</strong><small>At or below reorder level</small></div></div><div class="kpi"><div class="kpi-icon">↔</div><div><label>Recent Transactions</label><strong>${(d.transactions||[]).length}</strong><small>This unit's latest ledger entries</small></div></div></div>
+    <div class="card inventory-card"><div class="section-head"><div><h2>My Unit Stock List</h2><p>Quantities are shown using each commodity's own unit of measure.</p></div></div>${inventoryTable(items,false)}</div>
+    <div class="card inventory-card"><div class="section-head"><div><h2>🩺 Release Stock to Patient</h2><p>Record what was issued and the quantity. Available stock is checked before saving.</p></div></div>
+      <form class="inventory-form-grid" onsubmit="event.preventDefault();releaseInventoryToPatient()">
+        <div class="field inventory-span-two"><label for="inventoryReleaseItem">Health Commodity <span>*</span></label><select id="inventoryReleaseItem" required>${inventoryItemOptions({allowZero:false})}</select></div>
+        <div class="field"><label for="inventoryReleasePatientName">Patient Name <span>*</span></label><input id="inventoryReleasePatientName" required maxlength="160" placeholder="Full name of patient"></div>
+        <div class="field"><label for="inventoryReleasePatientId">Patient ID (optional)</label><input id="inventoryReleasePatientId" maxlength="80" placeholder="PAT-… if recorded in PATIENTS"></div>
+        <div class="field"><label for="inventoryReleaseQty">Quantity Released <span>*</span></label><input id="inventoryReleaseQty" type="number" min="0.01" step="0.01" required placeholder="Enter quantity"></div>
+        <div class="field inventory-span-two"><label for="inventoryReleaseNotes">Remarks (optional)</label><input id="inventoryReleaseNotes" maxlength="240" placeholder="Optional issue details; do not include unnecessary sensitive information"></div>
+        <div class="inventory-form-actions"><button type="submit" class="btn primary">Record Patient Release</button></div>
+      </form>
+    </div>
+    <div class="card inventory-card"><div class="section-head"><div><h2>Unit Stock Movement History</h2><p>Stock distributions received and stock released to patients for this unit.</p></div></div>${inventoryTransactionsTable(d.transactions||[],false)}</div>`;
+}
+function updateInventoryDistributionMode(){
+  const mode=$('inventoryDistributionMode');
+  const unitWrap=$('inventoryDistributionUnitWrap');
+  const qty=$('inventoryDistributeQty');
+  const help=$('inventoryDistributionHelp');
+  if(!mode||!unitWrap||!qty||!help) return;
+  const all=mode.value==='ALL';
+  unitWrap.classList.toggle('hidden',all);
+  $('inventoryDistributionUnit').required=!all;
+  qty.placeholder=all?'Quantity per active unit':'Quantity for selected unit';
+  help.textContent=all?`All active units will receive the entered quantity EACH. Required central stock = quantity × ${(inventoryPageData?.units||[]).length} active units.`:'One unit: quantity is the total sent to that unit.';
+}
+function resetInventoryItemForm(){
+  if(!$('inventoryItemForm')) return;
+  $('inventoryItemForm').reset();
+  $('inventoryItemId').value='';
+  $('inventoryItemUnit').value='pcs';
+  $('inventoryReorderLevel').value='0';
+  $('inventoryItemSaveBtn').textContent='＋ Add Item';
+}
+function editInventoryItem(itemId){
+  const x=(inventoryPageData?.items||[]).find(r=>r.itemId===itemId);
+  if(!x) return;
+  $('inventoryItemId').value=x.itemId;
+  $('inventoryItemName').value=x.name||'';
+  $('inventoryItemCategory').value=x.category||'';
+  $('inventoryItemUnit').value=x.unit||'pcs';
+  $('inventoryReorderLevel').value=Number(x.reorderLevel||0);
+  $('inventoryItemDescription').value=x.description||'';
+  $('inventoryItemSaveBtn').textContent='Save Changes';
+  $('inventoryItemName').focus();
+  $('inventoryItemForm').scrollIntoView({behavior:'smooth',block:'center'});
+}
+async function saveInventoryItem(){
+  const payload={itemId:$('inventoryItemId').value.trim(),name:$('inventoryItemName').value.trim(),category:$('inventoryItemCategory').value.trim(),unit:$('inventoryItemUnit').value.trim(),reorderLevel:$('inventoryReorderLevel').value,description:$('inventoryItemDescription').value.trim()};
+  const btn=$('inventoryItemSaveBtn');
+  btn.disabled=true;const old=btn.textContent;btn.textContent='Saving…';
+  try{const res=await apiPost('adminSaveInventoryItem',payload);alert(res.message||'Inventory item saved.');await renderInventoryPage();}
+  catch(e){alert(e.message||e)}finally{if(btn.isConnected){btn.disabled=false;if(btn.textContent==='Saving…')btn.textContent=old}}
+}
+async function deleteInventoryItem(itemId){
+  const x=(inventoryPageData?.items||[]).find(r=>r.itemId===itemId);
+  if(!x)return;
+  if(!confirm(`Remove “${x.name}” from the active catalog?\n\nStock movement history will be preserved. You can delete/archive it only after its available balance at the central store and all units reaches zero.`))return;
+  try{const res=await apiPost('adminDeleteInventoryItem',{itemId});alert(res.message||'Item removed from active inventory.');await renderInventoryPage()}catch(e){alert(e.message||e)}
+}
+async function receiveInventoryStock(){
+  const payload={itemId:$('inventoryReceiveItem').value,quantity:$('inventoryReceiveQty').value,notes:$('inventoryReceiveNotes').value.trim()};
+  try{const res=await apiPost('adminReceiveInventoryStock',payload);alert(res.message||'Stock-in saved.');await renderInventoryPage()}catch(e){alert(e.message||e)}
+}
+async function distributeInventoryStock(){
+  const mode=$('inventoryDistributionMode').value;
+  const payload={itemId:$('inventoryDistributeItem').value,mode:mode,unit:$('inventoryDistributionUnit').value,quantity:$('inventoryDistributeQty').value,notes:$('inventoryDistributeNotes').value.trim()};
+  const qty=Number(payload.quantity);
+  if(mode==='ALL'&&!confirm(`Distribute ${inventoryQty(qty)} of this item to EACH of ${(inventoryPageData?.units||[]).length} active units?\n\nTotal stock required: ${inventoryQty(qty*(inventoryPageData?.units||[]).length)}.`))return;
+  try{const res=await apiPost('adminDistributeInventoryStock',payload);alert(res.message||'Distribution saved.');await renderInventoryPage()}catch(e){alert(e.message||e)}
+}
+async function releaseInventoryToPatient(){
+  const payload={itemId:$('inventoryReleaseItem').value,patientName:$('inventoryReleasePatientName').value.trim(),patientId:$('inventoryReleasePatientId').value.trim(),quantity:$('inventoryReleaseQty').value,notes:$('inventoryReleaseNotes').value.trim()};
+  try{const res=await apiPost('releaseInventoryToPatient',payload);alert(res.message||'Patient release recorded.');await renderInventoryPage()}catch(e){alert(e.message||e)}
+}
+
 async function logout(){
   try{if(token) await apiPost("logout",{},true)}catch(e){}
-  isOfflineSession=false;
+  isOfflineSession=false;cacheRefreshNoticeText="";setLocalCacheStatus("");
   hidePrivateApp();
   loadPublicDashboard();
 }
