@@ -866,6 +866,9 @@ let adminFullDataLoaded = false;
 let adminFullDataPromise = null;
 let roleDataRefreshInFlight = false;
 let roleRefreshPausedUntil = 0;
+// Incremented before Admin write actions so older in-flight reads cannot overwrite the saved result.
+let roleDataMutationVersion = 0;
+function beginRoleDataMutation(){roleDataMutationVersion++;roleRefreshPausedUntil=Date.now()+2500;}
 let adminUnitDetailLoadInFlight = false;
 let cacheRefreshNoticeText = "";
 
@@ -1601,7 +1604,7 @@ async function ensureAdminFullData(){
   finally{adminFullDataPromise=null;}
 }
 
-async function loadRoleData(){
+async function loadRoleData(forceFresh=false){
   if(!currentUser) return;
   const role=currentUser.role;
   const isTL=role==="TEAM_LEADER";
@@ -1621,6 +1624,24 @@ async function loadRoleData(){
     }
     if(!cache?.data) throw new Error("No offline cache is available for this Team Leader unit. Please login once while online.");
     currentUnitData=cache.data;applyReportTypesFromData(currentUnitData);if(!Array.isArray(currentUnitData.reports))currentUnitData.reports=[];renderLeaderDashboard();
+    return;
+  }
+
+  // Post-mutation refreshes must bypass the cache so the UI reflects the Google Sheet write immediately.
+  if(forceFresh){
+    cacheRefreshNoticeText="";setLocalCacheStatus("");
+    roleRefreshPausedUntil=Date.now()+2500;
+    if(role==="ADMIN"){
+      const fresh=await apiGet("adminData",{token});
+      if(!currentUser || currentUser.role!=="ADMIN") return;
+      adminData=fresh;adminFullDataLoaded=true;applyReportTypesFromData(adminData);populateUserUnitSelect();
+      try{await cacheRoleDataForOffline("ADMIN",adminData);}catch(cacheError){console.warn("Unable to update Admin offline cache after save.",cacheError);}
+    }else{
+      const fresh=await apiGet("unitData",{token,unit:currentUser.unit});
+      if(!currentUser || currentUser.role!=="TEAM_LEADER") return;
+      currentUnitData=fresh;applyReportTypesFromData(currentUnitData);
+      try{await cacheRoleDataForOffline("TEAM_LEADER",currentUnitData);await cacheOfflineUnitData(currentUnitData);}catch(cacheError){console.warn("Unable to update Team Leader offline cache after save.",cacheError);}
+    }
     return;
   }
 
@@ -1678,11 +1699,11 @@ async function refreshRoleDataSilently(){
   if(!currentUser || !token || isOfflineSession || navigator.onLine===false || document.hidden) return;
   if(roleDataRefreshInFlight || Date.now()<roleRefreshPausedUntil) return;
   roleDataRefreshInFlight=true;
-  const sessionUser=currentUser, sessionToken=token, role=currentUser.role;
+  const sessionUser=currentUser, sessionToken=token, role=currentUser.role, mutationVersion=roleDataMutationVersion;
   try{
     if(role==="ADMIN"){
       const fresh=await apiGet("adminData",{token:sessionToken});
-      if(currentUser!==sessionUser || token!==sessionToken) return;
+      if(currentUser!==sessionUser || token!==sessionToken || mutationVersion!==roleDataMutationVersion) return;
       // Capture the currently visible page and filters after the request completes so navigation stays responsive.
       const page=currentPage;
       const savedPatientSearch=$("patientSearch")?.value||"";
@@ -1702,7 +1723,7 @@ async function refreshRoleDataSilently(){
         if(adminUnitDetailOpen&&savedAdminUnit){
           if(!adminUnitDetailLoadInFlight){
             const detail=await apiGet("unitData",{token:sessionToken,unit:savedAdminUnit});
-            if(currentUser===sessionUser&&token===sessionToken&&currentPage==="unit"&&detail?.unit?.name===savedAdminUnit){currentUnitData=detail;await cacheOfflineUnitData(currentUnitData);renderAdminUnitDetail();setLocalCacheStatus("");}
+            if(currentUser===sessionUser&&token===sessionToken&&mutationVersion===roleDataMutationVersion&&currentPage==="unit"&&detail?.unit?.name===savedAdminUnit){currentUnitData=detail;await cacheOfflineUnitData(currentUnitData);renderAdminUnitDetail();setLocalCacheStatus("");}
           }
         }else renderAllUnits();
       }else if(page==="duty")renderDutyPage();
@@ -1715,7 +1736,7 @@ async function refreshRoleDataSilently(){
       }
     }else if(role==="TEAM_LEADER"){
       const fresh=await apiGet("unitData",{token:sessionToken,unit:sessionUser.unit});
-      if(currentUser!==sessionUser || token!==sessionToken) return;
+      if(currentUser!==sessionUser || token!==sessionToken || mutationVersion!==roleDataMutationVersion) return;
       const page=currentPage;
       const savedPatientSearch=$("patientSearch")?.value||"";
       currentUnitData=fresh;applyReportTypesFromData(currentUnitData);
@@ -2528,12 +2549,24 @@ function filterDutyAdmin(){
 }
 function renderAssignmentTable(rows){
   if(!rows.length)return '<div class="empty" style="padding:25px;text-align:center;color:var(--muted)">No assignment records.</div>';
-  const body=rows.map((r,i)=>{
-    let html=`<tr><td>${esc(r.cemetery)}</td><td>${esc(r.shift)}</td><td>${esc(displayDateValue(r.date))}</td><td>Staff ${r.slot}</td><td><b>${esc(r.personnelName||"VACANT")}</b></td><td><span class="status ${r.personnelName?'ok':'warn'}">${r.status}</span></td><td>${currentUser.role==="ADMIN"?`<div class="actions"><button type="button" class="btn" onclick='editAssignment(${JSON.stringify(r).replace(/'/g,"&#39;")})'>Edit</button><button type="button" class="btn danger" onclick="deleteAssignment(${r.row},${r.slot})">Delete</button></div>`:""}</td></tr>`;
-    const isLastForShift = !rows[i+1] || Number(rows[i+1].row)!==Number(r.row);
-    if(isLastForShift && currentUser.role==="ADMIN"){
-      html+=`<tr class="assignment-add-row"><td colspan="7"><button type="button" class="btn primary" onclick="addStaffSlot(${Number(r.row)})">＋ Add Staff to this shift</button></td></tr>`;
+  // DUTY_INPUT stores Staff 1, Staff 2, etc. as columns, not as separate records. Empty cells
+  // are only placeholders, so do not show a deletable VACANT row for each empty cell. Group by
+  // unit/shift row and keep one Add Staff action even when the shift has no assigned personnel.
+  const groups=new Map();
+  rows.forEach(r=>{
+    const key=String(r.row);
+    if(!groups.has(key))groups.set(key,{ref:r,staff:[]});
+    if(String(r.personnelName||'').trim())groups.get(key).staff.push(r);
+  });
+  const body=Array.from(groups.values()).map(group=>{
+    const ref=group.ref;
+    let html='';
+    if(group.staff.length){
+      html+=group.staff.map(r=>`<tr><td>${esc(r.cemetery)}</td><td>${esc(r.shift)}</td><td>${esc(displayDateValue(r.date))}</td><td>Staff ${r.slot}</td><td><b>${esc(r.personnelName)}</b></td><td><span class="status ok">ASSIGNED</span></td><td>${currentUser.role==="ADMIN"?`<div class="actions"><button type="button" class="btn" onclick='editAssignment(${JSON.stringify(r).replace(/'/g,"&#39;")})'>Edit</button><button type="button" class="btn danger" onclick="deleteAssignment(${r.row},${r.slot})">Delete</button></div>`:""}</td></tr>`).join('');
+    }else{
+      html+=`<tr class="assignment-empty-shift"><td>${esc(ref.cemetery)}</td><td>${esc(ref.shift)}</td><td>${esc(displayDateValue(ref.date))}</td><td>—</td><td><b style="color:var(--muted)">No personnel assigned yet</b></td><td><span class="status warn">UNASSIGNED</span></td><td>—</td></tr>`;
     }
+    if(currentUser.role==="ADMIN")html+=`<tr class="assignment-add-row"><td colspan="7"><button type="button" class="btn primary" onclick="addStaffSlot(${Number(ref.row)})">＋ Add Staff to this shift</button></td></tr>`;
     return html;
   }).join('');
   return `<div class="table-wrap"><table><thead><tr><th>Unit</th><th>Shift</th><th>Date</th><th>Slot</th><th>Personnel</th><th>Status</th><th>Action</th></tr></thead><tbody>${body}</tbody></table></div>`;
@@ -2584,14 +2617,14 @@ function editAssignment(r){
 }
 $("saveAssignmentBtn").addEventListener("click",async()=>{
   const btn=$("saveAssignmentBtn");btn.disabled=true;
-  try{await apiPost("adminSaveAssignment",{row:Number($("assignmentRow").value),slot:Number($("assignmentSlot").value),personnelName:$("assignmentName").value.trim(),teamLeader:$("assignmentLeader").value.trim()});closeModal("assignmentModal");await loadRoleData();renderDutyPage();alert("Personnel duty assignment saved.");}
+  try{beginRoleDataMutation();await apiPost("adminSaveAssignment",{row:Number($("assignmentRow").value),slot:Number($("assignmentSlot").value),personnelName:$("assignmentName").value.trim(),teamLeader:$("assignmentLeader").value.trim()});closeModal("assignmentModal");await loadRoleData(true);renderDutyPage();alert("Personnel duty assignment saved and refreshed.");}
   catch(e){alert(e.message)}finally{btn.disabled=false}
 });
 async function deleteAssignment(row,slot){
-  if(!confirm("Remove this personnel assignment?"))return;
-  try{await apiPost("adminDeleteAssignment",{row,slot});await loadRoleData();renderDutyPage();}catch(e){alert(e.message)}
+  if(!confirm("Remove this personnel assignment? The slot will become available for reuse."))return;
+  try{beginRoleDataMutation();await apiPost("adminDeleteAssignment",{row,slot});await loadRoleData(true);renderDutyPage();}catch(e){alert(e.message)}
 }
-async function apiSync(){try{await apiPost("syncDuty");await loadRoleData();renderDutyPage();alert("Duty schedule synchronized.")}catch(e){alert(e.message)}}
+async function apiSync(){try{beginRoleDataMutation();await apiPost("syncDuty");await loadRoleData(true);renderDutyPage();alert("Duty schedule synchronized and refreshed.")}catch(e){alert(e.message)}}
 
 function renderReportTypeMiniCards(t){
   const totals=t||{};
