@@ -854,8 +854,8 @@ const LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAMAAAAJbSJI
 const LOCAL_UNITS = [{"group": 1, "name": "Himlayang Katoliko / Sta Elena Memorial Park / Antipolo Public Cemetery 1", "covered": ["Himlayang Katoliko", "Sta Elena Memorial Park", "Antipolo Public Cemetery 1 (Besides Sta. Elena Memorial Park)"]}, {"group": 2, "name": "Our Lady of Peace Crematorium and Columbarium 1 / Antipolo Public Cemetery 2 / Antipolo Public Cemetery 3", "covered": ["Our Lady of Peace Crematorium and Columbarium 1", "Antipolo Public Cemetery 2", "Antipolo Public Cemetery 3 (Infront of Antipolo Public Cemetery 2)"]}, {"group": 3, "name": "Our Lady of Peace Memorial Park 2 / Our Lady of Peace Memorial Park 3", "covered": ["Our Lady of Peace Memorial Park 2", "Our Lady of Peace Memorial Park 3 (Infront of OLPMP 2)"]}, {"group": 4, "name": "Transfiguration of Christ Parish Church", "covered": ["Transfiguration of Christ Parish Church"]}, {"group": 5, "name": "Pantay Public Cemetery", "covered": ["Pantay Public Cemetery"]}, {"group": 6, "name": "Boso-Boso Public Cemetery", "covered": ["Boso-Boso Public Cemetery"]}, {"group": 7, "name": "Heaven’s Gate 2 Memorial Park", "covered": ["Heaven’s Gate 2 Memorial Park"]}, {"group": 8, "name": "Loyola Gardens of Antipolo", "covered": ["Loyola Gardens of Antipolo"]}, {"group": 9, "name": "Providence Memorial Park", "covered": ["Providence Memorial Park"]}, {"group": 10, "name": "Sto. Rosario Memorial Park", "covered": ["Sto. Rosario Memorial Park"]}, {"group": 11, "name": "Heaven’s Gate 1 Memorial Park", "covered": ["Heaven’s Gate 1 Memorial Park"]}, {"group": 12, "name": "Gethsemane Memorial Park", "covered": ["Gethsemane Memorial Park"]}, {"group": 13, "name": "Haven of Angels Memorial and Crematorium", "covered": ["Haven of Angels Memorial and Crematorium"]}, {"group": 14, "name": "Valley of Sympathy Memorial Park", "covered": ["Valley of Sympathy Memorial Park"]}];
 const LOCAL_SHIFTS = [{"id": "S1", "date": "October 31, 2026", "period": "2:00 PM - 10:00 PM", "coverage": "Oct. 31"}, {"id": "S2", "date": "Oct. 31 - Nov. 1, 2026", "period": "10:00 PM - 6:00 AM", "coverage": "Oct. 31 - Nov. 1"}, {"id": "S3", "date": "November 1, 2026", "period": "6:00 AM - 2:00 PM", "coverage": "Nov. 1"}, {"id": "S4", "date": "November 1, 2026", "period": "2:00 PM - 10:00 PM", "coverage": "Nov. 1"}, {"id": "S5", "date": "Nov. 1 - 2, 2026", "period": "10:00 PM - 6:00 AM", "coverage": "Nov. 1 - 2"}];
 let currentUser = null;
-// Deliberately do not restore authentication from localStorage.
-// A full page refresh must return the system to the public dashboard.
+// The server-issued bearer token is kept in sessionStorage only so a page refresh
+// can restore the same tab's session. Passwords are never stored for session restore.
 let token = "";
 let adminData = null;
 let currentUnitData = null;
@@ -919,6 +919,34 @@ const OFFLINE_AUTH_TTL_MS=72*60*60*1000; // 72 hours; requires a fresh online lo
 let offlineDbPromise=null;
 let syncInFlight=null;
 let isOfflineSession=false;
+const SESSION_RESTORE_STORAGE_KEY="OPLAN_KALULUWA_SESSION_RESTORE_V1";
+let sessionRestoreInFlight=null;
+
+function persistSessionForRefresh(){
+  try{
+    if(!token || !currentUser || isOfflineSession){
+      sessionStorage.removeItem(SESSION_RESTORE_STORAGE_KEY);
+      return;
+    }
+    // Store only the server-issued token; restore the user profile from the server.
+    sessionStorage.setItem(SESSION_RESTORE_STORAGE_KEY,JSON.stringify({token:String(token),savedAt:Date.now()}));
+  }catch(err){console.warn("Session refresh persistence is unavailable in this browser tab.",err);}
+}
+function clearPersistedSessionForRefresh(){
+  try{sessionStorage.removeItem(SESSION_RESTORE_STORAGE_KEY);}catch(err){}
+}
+function readPersistedSessionForRefresh(){
+  try{
+    const raw=sessionStorage.getItem(SESSION_RESTORE_STORAGE_KEY);
+    if(!raw)return null;
+    const saved=JSON.parse(raw);
+    if(!saved || typeof saved.token!=="string" || !saved.token.trim()){
+      clearPersistedSessionForRefresh();
+      return null;
+    }
+    return saved;
+  }catch(err){return null;}
+}
 
 function openOfflineDb(){
   if(offlineDbPromise) return offlineDbPromise;
@@ -1128,7 +1156,11 @@ function scheduleOfflineSyncRetry(){
 window.addEventListener("online",async()=>{
   // Give Android/WebView a moment to finish restoring the network route.
   setTimeout(async()=>{
-    if(currentUser && token){
+    let restoredNow=false;
+    if(!currentUser){
+      try{restoredNow=await restoreSessionAfterPageRefresh();}catch(err){}
+    }
+    if(currentUser && token && !restoredNow){
       try{
         await apiPost("refreshSession",{},true);
         isOfflineSession=false;
@@ -1140,7 +1172,7 @@ window.addEventListener("online",async()=>{
     }
     const result=await syncPendingReports();
     if(result && result.pending>0) scheduleOfflineSyncRetry();
-    if(result && result.synced && currentUser){
+    if(!restoredNow && result && result.synced && currentUser){
       try{await loadRoleData();if(currentPage==="report") renderReportPage();}catch(err){}
     }
   },1500);
@@ -1391,7 +1423,11 @@ $("loginForm").addEventListener("submit",async e=>{
     adminFullDataLoaded=false;
     adminFullDataPromise=null;
     if(!out.offline){
+      persistSessionForRefresh();
       try{await rememberOfflineAccess(loginRole,loginRole==="ADMIN"?credentials.username:credentials.unit,credentials.password,out.user,out.token);}catch(storeErr){}
+    }else{
+      // An offline-login profile is not a validated online session token.
+      clearPersistedSessionForRefresh();
     }
     closeModal("loginModal");
     cacheRefreshNoticeText="";setLocalCacheStatus("");
@@ -1427,6 +1463,62 @@ $("loginForm").addEventListener("submit",async e=>{
     btn.textContent="Login";
   }
 });
+
+async function restoreSessionAfterPageRefresh(){
+  if(sessionRestoreInFlight) return sessionRestoreInFlight;
+  sessionRestoreInFlight=(async()=>{
+    const saved=readPersistedSessionForRefresh();
+    if(!saved || navigator.onLine===false) return false;
+
+    // Never trust a cached role/profile by itself. Validate the token with Apps Script.
+    token=saved.token;
+    try{
+      const validation=await apiPost("refreshSession",{},true);
+      const profile=validation && validation.user;
+      const role=String(profile && profile.role || "").toUpperCase();
+      if(!validation || !validation.ok || !profile || !["ADMIN","TEAM_LEADER"].includes(role)){
+        throw new Error("Session expired. Please login again.");
+      }
+
+      currentUser=profile;
+      isOfflineSession=false;
+      adminData=null;currentUnitData=null;adminFullDataLoaded=false;adminFullDataPromise=null;
+      persistSessionForRefresh(); // refresh last-used timestamp, never the password
+      cacheRefreshNoticeText="";
+      setLocalCacheStatus("");
+      showPrivateApp();
+      showDashboardLoading();
+      navigate("dashboard");
+
+      try{
+        await loadRoleData();
+        if(currentUser && token) navigate("dashboard");
+      }catch(loadErr){
+        const host=$("privateDashboard");
+        if(host) host.innerHTML=`<div class="card"><div class="notice" style="border-color:#fecaca;background:#fff7f7;color:#991b1b">Your session is restored, but the dashboard data could not be refreshed: ${esc(loadErr.message||loadErr)}</div><button type="button" class="btn primary" onclick="navigate('dashboard')">Retry Dashboard</button> <button type="button" class="btn" onclick="logout()">Logout</button></div>`;
+      }
+
+      // Keep non-essential tasks off the critical render path, just like normal login.
+      void syncPendingReports().then(result=>{if(result && result.pending>0) scheduleOfflineSyncRetry();}).catch(err=>console.warn("Background report sync failed after session restore.",err));
+      void initFirebaseChat().catch(err=>console.warn("Live Chat initialization failed after session restore.",err));
+      if(currentUser && currentUser.role==="ADMIN"){
+        window.setTimeout(()=>ensureAdminFullData().catch(err=>console.warn("Background Admin data hydration failed after session restore.",err)),700);
+      }
+      return true;
+    }catch(err){
+      const message=String(err && (err.message||err) || "Session restore failed.");
+      // A real server-side expiry/rejection clears the stored token. For network or
+      // transient service errors, retain it so the same tab can retry when online.
+      if(/session expired|invalid session|invalid token|access denied|unauthorized/i.test(message)){
+        clearPersistedSessionForRefresh();
+      }
+      token="";currentUser=null;isOfflineSession=false;
+      return false;
+    }
+  })();
+  try{return await sessionRestoreInFlight;}
+  finally{sessionRestoreInFlight=null;}
+}
 
 function showDashboardLoading(){
   const host=$("privateDashboard");
@@ -4081,6 +4173,8 @@ async function releaseInventoryToPatient(){
 }
 
 async function logout(){
+  // Explicit logout always forgets this tab's restore token, even if the network is down.
+  clearPersistedSessionForRefresh();
   try{if(token) await apiPost("logout",{},true)}catch(e){}
   isOfflineSession=false;cacheRefreshNoticeText="";setLocalCacheStatus("");
   hidePrivateApp();
@@ -4090,6 +4184,9 @@ async function logout(){
 $("menuBtn").addEventListener("click",()=> $("sidebar").classList.toggle("open"));
 loadPublicDashboard();
 startPublicAutoRefresh();
+// Revalidate a prior online session on every page load. If its server token is still
+// valid, restore the role dashboard; if expired, return to normal login without a loop.
+void restoreSessionAfterPageRefresh();
 </script>
 
 <style id="dynamic-report-types-emergency-css">
