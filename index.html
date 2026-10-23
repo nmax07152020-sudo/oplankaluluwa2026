@@ -460,6 +460,51 @@ button{cursor:pointer}
 @media(max-width:780px){.inventory-two-col{grid-template-columns:1fr}.inventory-hero{padding:15px}.inventory-hero strong{font-size:17px}.inventory-table{min-width:690px}}
 @media(max-width:540px){.inventory-form-grid{grid-template-columns:1fr}.inventory-span-two{grid-column:auto}.inventory-form-actions{justify-content:stretch}.inventory-form-actions .btn{flex:1}.inventory-hero-icon{width:44px;height:44px;font-size:26px}.inventory-kpis .kpi{min-width:0}}
 </style>
+
+<style id="reporting-analytics-css">
+.report-analytics-filters{margin-bottom:14px;padding:15px 17px}
+.report-analytics-filter-title,.report-table-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.report-analytics-filter-title b,.report-table-heading h3{display:block;margin:0;font-size:13px}
+.report-analytics-filter-title small,.report-table-heading p{display:block;margin:3px 0 0;font-size:9px;color:var(--muted)}
+.report-date-filter{display:flex;flex-direction:column;gap:4px;font-size:9px;font-weight:800;color:var(--muted)}
+.report-date-filter input{min-height:38px;border:1px solid var(--line);border-radius:10px;background:#fff;padding:8px 10px;color:var(--text);min-width:150px}
+.analytics-filter-note{font-size:9px;color:var(--muted);line-height:1.5;margin:0}
+.admin-report-analytics{display:grid;gap:14px;margin-bottom:14px;min-width:0}
+.report-analytics-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.report-analytics-stat{background:linear-gradient(145deg,#fff,#f8fbff);border:1px solid var(--line);border-radius:15px;padding:14px 15px;min-width:0;box-shadow:0 7px 20px rgba(16,49,88,.04)}
+.report-analytics-stat span{display:block;color:var(--muted);font-size:9px;font-weight:800;letter-spacing:.2px}
+.report-analytics-stat strong{display:block;font-size:25px;line-height:1.25;margin:5px 0 4px;color:#0a4d8f;overflow-wrap:anywhere}
+.report-analytics-stat small{display:block;color:var(--muted);font-size:8px;line-height:1.45}
+.report-analytics-section-title{display:flex;justify-content:space-between;align-items:end;gap:10px;margin:5px 0 -4px}
+.report-analytics-section-title h3{margin:0;font-size:15px}.report-analytics-section-title p{margin:3px 0 0;color:var(--muted);font-size:9px;line-height:1.45}
+.report-analytics-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:stretch;min-width:0}
+.report-chart-card{padding:16px;background:#fff;border:1px solid var(--line);border-radius:17px;box-shadow:var(--shadow);min-width:0}
+.report-chart-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:14px}
+.report-chart-heading h3{margin:0;font-size:12px;line-height:1.35}.report-chart-heading p{margin:4px 0 0;font-size:8px;color:var(--muted);line-height:1.4}
+.report-donut-layout{display:grid;grid-template-columns:minmax(110px,.8fr) minmax(0,1.2fr);gap:16px;align-items:center}
+.report-donut{width:min(100%,172px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;position:relative;margin:auto}
+.report-donut:before{content:"";position:absolute;inset:19%;border-radius:50%;background:#fff;border:1px solid #edf2f7}
+.report-donut>div{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:2px;padding:5px}
+.report-donut strong{font-size:21px;line-height:1.2;color:var(--text)}.report-donut span{font-size:8px;color:var(--muted);font-weight:800}
+.report-chart-legend{display:grid;gap:9px;min-width:0}
+.report-legend-item{display:grid;grid-template-columns:8px minmax(0,1fr) auto auto;gap:7px;align-items:center;font-size:9px}
+.report-legend-dot{width:8px;height:8px;border-radius:3px}.report-legend-label{min-width:0;overflow-wrap:anywhere;color:#52657c}.report-legend-item b{font-size:10px}.report-legend-item small{font-size:8px;color:var(--muted);min-width:28px;text-align:right}
+.report-bar-list{display:grid;gap:10px;max-height:450px;overflow-y:auto;padding:1px 3px 3px 0}
+.report-bar-row{display:grid;grid-template-columns:minmax(95px, .95fr) minmax(60px,1.6fr) auto;gap:9px;align-items:center}
+.report-bar-label{font-size:9px;font-weight:700;color:#51647a;line-height:1.35;overflow-wrap:anywhere}
+.report-bar-track{height:9px;background:#edf3f9;border-radius:999px;overflow:hidden;min-width:0}
+.report-bar-fill{height:100%;min-width:0;background:linear-gradient(90deg,#0b76df,#55a7f4);border-radius:999px;transition:width .25s ease}
+.report-bar-fill.teal{background:linear-gradient(90deg,#079c92,#46c7b5)}
+.report-bar-value{font-size:10px;min-width:25px;text-align:right;font-weight:900;color:#153d65;font-variant-numeric:tabular-nums}
+.analytics-empty{padding:16px;text-align:center;color:var(--muted);font-size:9px;line-height:1.5;background:#f8fbff;border-radius:10px}
+.report-status-card{padding:15px 17px}.report-status-pills{display:flex;flex-wrap:wrap;gap:9px}
+.report-status-pill{display:flex;align-items:center;justify-content:space-between;gap:18px;min-width:150px;flex:1;border:1px solid var(--line);border-radius:11px;padding:10px 12px;background:#f9fbfe}
+.report-status-pill span{font-size:9px;color:#52657c}.report-status-pill strong{font-size:17px;color:#0a4d8f}
+.report-table-card{padding:16px 17px}.report-table-heading{margin-bottom:12px}.report-result-count{display:inline-flex;align-items:center;white-space:nowrap;border:1px solid #cfe2f7;background:#edf6ff;border-radius:999px;color:#0b60b2;font-size:9px;font-weight:900;padding:6px 9px}
+@media(max-width:900px){.report-analytics-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.report-donut-layout{grid-template-columns:1fr}.report-donut{width:min(100%,145px)}.report-chart-legend{width:100%}}
+@media(max-width:650px){.report-analytics-grid{grid-template-columns:1fr}.report-analytics-kpis{gap:8px}.report-analytics-stat{padding:11px}.report-analytics-stat strong{font-size:22px}.report-analytics-filter-title,.report-table-heading{align-items:flex-start}.report-analytics-filter-title{flex-direction:column}.report-analytics-filter-title .btn{align-self:flex-start}.report-bar-row{grid-template-columns:minmax(90px,1fr) minmax(65px,1.1fr) auto;gap:7px}.report-date-filter input{width:100%;min-width:0}.report-status-pill{min-width:125px}}
+</style>
+
 </head>
 <body>
 
@@ -3338,29 +3383,196 @@ async function removeReportType(name){
 function renderAdminReports(){
   const rows=adminData.reports||[];
   if(!isOfflineSession && cacheRefreshNoticeText && !rows.length){
-    $("adminReportsPage").innerHTML=`<div class="section-head"><div><h2>All Reports</h2><p>Central report monitoring.</p></div></div><div class="card"><div class="notice">The local cache does not include detailed report rows. Loading the latest authorized report list from the server so this page does not mistakenly show “no reports.”</div></div>`;
+    $("adminReportsPage").innerHTML=`<div class="section-head"><div><h2>All Reports</h2><p>Central report monitoring and analytics.</p></div></div><div class="card"><div class="notice">The local cache does not include detailed report rows. Loading the latest authorized report list from the server so this page does not mistakenly show “no reports.”</div></div>`;
     return;
   }
   if(isOfflineSession){
-    $("adminReportsPage").innerHTML=`<div class="section-head"><div><h2>All Reports</h2><p>Central report monitoring.</p></div></div><div class="card"><div class="offline-mode-banner" style="margin:0">📵 OFFLINE MODE<small>Detailed All Reports are available online after the latest data sync. New reports can still be saved locally.</small></div></div>`;
+    $("adminReportsPage").innerHTML=`<div class="section-head"><div><h2>All Reports</h2><p>Central report monitoring and analytics.</p></div></div><div class="card"><div class="offline-mode-banner" style="margin:0">📵 OFFLINE MODE<small>Reporting analytics require the latest authorized report and patient records. Reconnect to view complete analytics.</small></div></div>`;
     return;
   }
+  const units=Array.isArray(adminData.units)?adminData.units:[];
+  const unitOptions=[...new Set(units.map(u=>String(u["Cemetery / Post"]||"").trim()).filter(Boolean))];
+  const allTypes=[...new Set([...(REPORT_TYPE_OPTIONS||[]),...rows.map(r=>String(r.type||"").trim()).filter(Boolean)])];
+  const dateValue=(d)=>{
+    if(!d)return "";
+    const s=String(d).trim();
+    if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;
+    const dt=new Date(s);
+    if(Number.isNaN(dt.getTime()))return "";
+    const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Manila",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(dt);
+    const p={};parts.forEach(x=>p[x.type]=x.value);
+    return `${p.year}-${p.month}-${p.day}`;
+  };
+  // Default range is all records; date fields are optional and do not exclude older reports.
   $("adminReportsPage").innerHTML=`
-    <div class="section-head"><div><h2>All Reports</h2><p>Central report monitoring. Patient details are visible only to authorized users.</p></div><div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button type="button" class="btn" onclick="exportAdminReportsCsv()" title="Export the report rows currently matching the selected filters">⬇ Export CSV</button><button type="button" class="btn primary" onclick="openReportTypeManager()">⚙ Manage Report Types</button></div></div>
-    <div class="card"><div class="filters"><select id="reportUnitFilter"><option value="">All Units</option>${adminData.units.map(u=>`<option>${esc(u["Cemetery / Post"])}</option>`).join("")}</select><select id="reportTypeFilter"><option value="">All Types</option>${[...new Set([...REPORT_TYPE_OPTIONS,...(adminData.reports||[]).map(r=>String(r.type||'').trim()).filter(Boolean)])].map(type=>`<option value="${esc(type)}">${esc(type==="Other"?"Other (legacy records)":type)}</option>`).join("")}</select></div><p style="font-size:10px;color:var(--muted);margin:0 0 10px">Export CSV downloads the rows matching these filters. Select <b>All Units</b> and <b>All Types</b> to export the complete report list.</p><div id="adminReportTable"></div></div>`;
-  ["reportUnitFilter","reportTypeFilter"].forEach(id=>$(id).addEventListener("change",filterAdminReports));filterAdminReports();
+    <div class="section-head"><div><h2>All Reports</h2><p>Reporting & analytics · Operational activity and patient demographics.</p></div><div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button type="button" class="btn" onclick="exportAdminReportsCsv()" title="Export report rows currently matching the selected filters">⬇ Export CSV</button><button type="button" class="btn primary" onclick="openReportTypeManager()">⚙ Manage Report Types</button></div></div>
+    <div class="card report-analytics-filters"><div class="report-analytics-filter-title"><div><b>Report Filters</b><small>Unit/date filters update the charts and summary cards. The Report Type filter narrows the table.</small></div><button type="button" class="btn" onclick="resetAdminReportFilters()">Reset filters</button></div><div class="filters"><select id="reportUnitFilter" aria-label="Filter by unit"><option value="">All Units</option>${unitOptions.map(u=>`<option value="${esc(u)}">${esc(u)}</option>`).join("")}</select><select id="reportTypeFilter" aria-label="Filter table by report type"><option value="">All Types</option>${allTypes.map(type=>`<option value="${esc(type)}">${esc(type==="Other"?"Other (legacy records)":type)}</option>`).join("")}</select><label class="report-date-filter"><span>From date</span><input id="reportDateFrom" type="date" aria-label="From date"></label><label class="report-date-filter"><span>To date</span><input id="reportDateTo" type="date" aria-label="To date"></label></div><p class="analytics-filter-note">The Report Type filter narrows the table. The report-type chart continues to show the full breakdown for the selected unit and date range. Demographic charts use available records in PATIENTS.</p></div>
+    <div id="adminReportAnalytics" class="admin-report-analytics" aria-live="polite"></div>
+    <div class="card report-table-card"><div class="report-table-heading"><div><h3>Report Records</h3><p>Details in this table follow all selected filters.</p></div><span id="adminReportResultCount" class="report-result-count">0 records</span></div><div id="adminReportTable"></div></div>`;
+  ["reportUnitFilter","reportTypeFilter","reportDateFrom","reportDateTo"].forEach(id=>$(id).addEventListener("change",filterAdminReports));
+  filterAdminReports();
 }
-function getFilteredAdminReportRows(){
+function resetAdminReportFilters(){
+  ["reportUnitFilter","reportTypeFilter","reportDateFrom","reportDateTo"].forEach(id=>{const el=$(id);if(el)el.value="";});
+  filterAdminReports();
+}
+function reportAnalyticsDateKey(value){
+  if(!value)return "";
+  const s=String(value).trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;
+  const dt=new Date(s);
+  if(Number.isNaN(dt.getTime()))return "";
+  const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Manila",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(dt);
+  const p={};parts.forEach(x=>p[x.type]=x.value);
+  return `${p.year}-${p.month}-${p.day}`;
+}
+function formatReportRecordDatePHT(value){
+  if(value===null||value===undefined||String(value).trim()==="") return "";
+  const s=String(value).trim();
+  // A date-only value is a calendar date, not a UTC instant; keep its year/month/day intact.
+  let m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(m){
+    const y=Number(m[1]),mo=Number(m[2]),d=Number(m[3]);
+    if(mo>=1&&mo<=12&&d>=1&&d<=31) return new Intl.DateTimeFormat("en-PH",{timeZone:"Asia/Manila",month:"short",day:"numeric",year:"numeric"}).format(new Date(Date.UTC(y,mo-1,d,12,0,0)));
+  }
+  // Google Sheets can also return a locale-style date such as 10/23/2026.
+  m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(m){
+    const mo=Number(m[1]),d=Number(m[2]),y=Number(m[3]);
+    if(mo>=1&&mo<=12&&d>=1&&d<=31) return new Intl.DateTimeFormat("en-PH",{timeZone:"Asia/Manila",month:"short",day:"numeric",year:"numeric"}).format(new Date(Date.UTC(y,mo-1,d,12,0,0)));
+  }
+  const dt=new Date(s);
+  if(Number.isNaN(dt.getTime())) return s;
+  return new Intl.DateTimeFormat("en-PH",{timeZone:"Asia/Manila",month:"short",day:"numeric",year:"numeric"}).format(dt);
+}
+function formatReportRecordTimePHT(value){
+  if(value===null||value===undefined||String(value).trim()==="") return "";
+  const s=String(value).trim();
+  // Plain HH:mm or HH:mm:ss values from Sheets are already wall-clock time; do not shift them.
+  let m=s.match(/^(\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/);
+  if(m){
+    const h=Number(m[1]),min=Number(m[2]),sec=Number(m[3]||0);
+    if(h<=23&&min<=59&&sec<=59) return `${h%12||12}:${String(min).padStart(2,"0")}:${String(sec).padStart(2,"0")} ${h>=12?"PM":"AM"}`;
+  }
+  // ISO values such as 1899-12-30T11:15:49.000Z are Sheets time-only cells serialized as Dates.
+  // Read only their clock portion in Asia/Manila, so the 1899 base date is never shown.
+  const dt=new Date(s);
+  if(Number.isNaN(dt.getTime())) return s;
+  return new Intl.DateTimeFormat("en-PH",{timeZone:"Asia/Manila",hour:"numeric",minute:"2-digit",second:"2-digit",hour12:true}).format(dt);
+}
+function reportRecordDateForDisplay(r){return formatReportRecordDatePHT(r?.reportDate||r?.timestamp||"");}
+function reportRecordTimeForDisplay(r){return formatReportRecordTimePHT(r?.reportTime||"");}
+function getAdminReportRowsByContext(){
   let rows=(adminData.reports||[]).filter(r=>!r.patientId || r.patientRecordPresent!==false);
-  const unitFilter=$("reportUnitFilter")?.value||"";
-  const typeFilter=$("reportTypeFilter")?.value||"";
-  if(unitFilter) rows=rows.filter(r=>r.cemetery===unitFilter);
-  if(typeFilter) rows=rows.filter(r=>r.type===typeFilter);
+  const unit=$("reportUnitFilter")?.value||"";
+  const from=$("reportDateFrom")?.value||"";
+  const to=$("reportDateTo")?.value||"";
+  if(unit)rows=rows.filter(r=>String(r.cemetery||"")===unit);
+  if(from)rows=rows.filter(r=>{const d=reportAnalyticsDateKey(r.reportDate||r.timestamp);return d&&d>=from;});
+  if(to)rows=rows.filter(r=>{const d=reportAnalyticsDateKey(r.reportDate||r.timestamp);return d&&d<=to;});
   return rows;
 }
+function getFilteredAdminReportRows(){
+  let rows=getAdminReportRowsByContext();
+  const type=$("reportTypeFilter")?.value||"";
+  if(type)rows=rows.filter(r=>String(r.type||"")===type);
+  return rows;
+}
+function getAdminPatientsByContext(reportRows){
+  const patients=Array.isArray(adminData.patients)?adminData.patients:[];
+  const unit=$("reportUnitFilter")?.value||"";
+  const from=$("reportDateFrom")?.value||"";
+  const to=$("reportDateTo")?.value||"";
+  const reports=Array.isArray(adminData.reports)?adminData.reports:[];
+  const reportById=new Map(reports.map(r=>[String(r.reportId||""),r]));
+  const contextReportIds=new Set(reportRows.map(r=>String(r.reportId||"")));
+  return patients.filter(p=>{
+    const linked=reportById.get(String(p.linkedReportId||""));
+    const patientUnit=String(p.cemetery||linked?.cemetery||"");
+    if(unit&&patientUnit!==unit)return false;
+    const d=reportAnalyticsDateKey(linked?.reportDate||linked?.timestamp||p.createdAt);
+    if(from&&(!d||d<from))return false;
+    if(to&&(!d||d>to))return false;
+    // If a linked report is available, respect any report-level exclusions already applied above.
+    if(p.linkedReportId && linked && !contextReportIds.has(String(linked.reportId||"")))return false;
+    return true;
+  });
+}
+function analyticsCount(value){return Number(value||0).toLocaleString("en-PH");}
+function analyticsDonut(title,items,centerLabel){
+  const palette=["#0b76df","#14a875","#f0a120","#8b5cf6","#e45b77","#20a5b6","#7890aa"];
+  const total=items.reduce((s,x)=>s+x.value,0);
+  let cursor=0;
+  const stops=[];
+  const full=total||1;
+  items.forEach((item,i)=>{
+    const start=cursor;
+    cursor+=total?item.value/total*360:0;
+    if(item.value>0)stops.push(`${palette[i%palette.length]} ${start.toFixed(2)}deg ${cursor.toFixed(2)}deg`);
+  });
+  const bg=total?`conic-gradient(${stops.join(",")})`:"conic-gradient(#e7edf5 0deg 360deg)";
+  return `<section class="report-chart-card"><div class="report-chart-heading"><div><h3>${esc(title)}</h3><p>Patient records${total?` · ${analyticsCount(total)} total`:""}</p></div></div><div class="report-donut-layout"><div class="report-donut" style="background:${bg}"><div><strong>${analyticsCount(total)}</strong><span>${esc(centerLabel||"Records")}</span></div></div><div class="report-chart-legend">${items.map((x,i)=>`<div class="report-legend-item"><span class="report-legend-dot" style="background:${palette[i%palette.length]}"></span><span class="report-legend-label">${esc(x.label)}</span><b>${analyticsCount(x.value)}</b><small>${total?Math.round(x.value/total*100):0}%</small></div>`).join("")||"<p class='analytics-empty'>No demographic data in this range.</p>"}</div></div>${total?"":"<p class='analytics-empty'>No patient demographic records match these filters.</p>"}</section>`;
+}
+function analyticsBars(title,subtitle,items,options={}){
+  const nonzero=items.filter(x=>Number(x.value)>0);
+  const displayItems=options.keepZeros?items:nonzero;
+  const max=Math.max(1,...displayItems.map(x=>Number(x.value)||0));
+  const content=displayItems.length?displayItems.map(item=>{
+    const value=Math.max(0,Number(item.value)||0);
+    const pct=value?Math.max(3,value/max*100):0;
+    return `<div class="report-bar-row"><div class="report-bar-label" title="${esc(item.label)}">${esc(item.label)}</div><div class="report-bar-track"><div class="report-bar-fill ${options.accent||""}" style="width:${pct}%"></div></div><div class="report-bar-value">${analyticsCount(value)}</div></div>`;
+  }).join(""):`<div class="analytics-empty">No records to chart for this selection.</div>`;
+  return `<section class="report-chart-card"><div class="report-chart-heading"><div><h3>${esc(title)}</h3><p>${esc(subtitle||"")}</p></div></div><div class="report-bar-list">${content}</div></section>`;
+}
+function renderAdminReportAnalytics(contextRows){
+  const rows=Array.isArray(contextRows)?contextRows:[];
+  const patients=getAdminPatientsByContext(rows);
+  const totalPeople=rows.reduce((sum,r)=>sum+(Number(r.count)||0),0);
+  const unitCount=new Set(rows.map(r=>String(r.cemetery||"")).filter(Boolean)).size;
+  const totalPatients=patients.length;
+  const typeSet=new Set([...(REPORT_TYPE_OPTIONS||[]),...rows.map(r=>String(r.type||"").trim()).filter(Boolean)]);
+  const typeCounts=[...typeSet].map(label=>({label,value:rows.filter(r=>String(r.type||"")===label).length})).sort((a,b)=>b.value-a.value||a.label.localeCompare(b.label));
+  const unitCounts=[...new Set(rows.map(r=>String(r.cemetery||"").trim()).filter(Boolean))].map(label=>({label,value:rows.filter(r=>String(r.cemetery||"").trim()===label).length})).sort((a,b)=>b.value-a.value||a.label.localeCompare(b.label)).slice(0,10);
+  const genderBuckets=[{label:"Female",value:0},{label:"Male",value:0},{label:"Not recorded / Other",value:0}];
+  patients.forEach(p=>{
+    const g=String(p.gender||"").trim().toLowerCase();
+    if(["female","f","woman","girl"].includes(g))genderBuckets[0].value++;
+    else if(["male","m","man","boy"].includes(g))genderBuckets[1].value++;
+    else genderBuckets[2].value++;
+  });
+  const ageGroups=[{label:"0–17 years",value:0},{label:"18–29 years",value:0},{label:"30–44 years",value:0},{label:"45–59 years",value:0},{label:"60+ years",value:0},{label:"Age not recorded",value:0}];
+  patients.forEach(p=>{
+    const age=String(p.age==null?"":p.age).trim();
+    const n=age===""?NaN:Number(age);
+    if(!Number.isFinite(n)||n<0||n>125)ageGroups[5].value++;
+    else if(n<18)ageGroups[0].value++;
+    else if(n<30)ageGroups[1].value++;
+    else if(n<45)ageGroups[2].value++;
+    else if(n<60)ageGroups[3].value++;
+    else ageGroups[4].value++;
+  });
+  const statusCounts=[...new Set(rows.map(r=>String(r.status||"Unspecified").trim()||"Unspecified"))].map(label=>({label,value:rows.filter(r=>(String(r.status||"Unspecified").trim()||"Unspecified")===label).length})).sort((a,b)=>b.value-a.value);
+  return `<div class="report-analytics-kpis">
+    <div class="report-analytics-stat"><span>Submitted Reports</span><strong>${analyticsCount(rows.length)}</strong><small>Report records in selected unit/date range</small></div>
+    <div class="report-analytics-stat"><span>Persons Reported</span><strong>${analyticsCount(totalPeople)}</strong><small>Sum of the person-count field</small></div>
+    <div class="report-analytics-stat"><span>Patient Records</span><strong>${analyticsCount(totalPatients)}</strong><small>Records in PATIENTS matching the selected context</small></div>
+    <div class="report-analytics-stat"><span>Units With Reports</span><strong>${analyticsCount(unitCount)}</strong><small>Deployment units with activity</small></div>
+  </div>
+  <div class="report-analytics-section-title"><div><h3>Demographic Profile</h3><p>Based on patient records with available demographics; not all reports necessarily include patient details.</p></div></div>
+  <div class="report-analytics-grid report-analytics-demographics">${analyticsDonut("Gender Distribution",genderBuckets,"Patients")}${analyticsBars("Age Group Distribution","Patient records by age group",ageGroups,{keepZeros:true,accent:"teal"})}</div>
+  <div class="report-analytics-section-title"><div><h3>Operational Report Breakdown</h3><p>Report type charts count submitted reports, not the number of persons.</p></div></div>
+  <div class="report-analytics-grid">${analyticsBars("Reports by Type","All active and historical report types in the selected unit/date range",typeCounts,{keepZeros:true})}${analyticsBars("Reports by Unit","Top 10 units by number of report submissions",unitCounts,{accent:"teal"})}</div>
+  <section class="report-chart-card report-status-card"><div class="report-chart-heading"><div><h3>Report Status</h3><p>Current status breakdown for selected unit/date range</p></div></div><div class="report-status-pills">${statusCounts.length?statusCounts.map(s=>`<div class="report-status-pill"><span>${esc(s.label)}</span><strong>${analyticsCount(s.value)}</strong></div>`).join(""):`<div class="analytics-empty">No report status data.</div>`}</div></section>`;
+}
 function filterAdminReports(){
+  const contextRows=getAdminReportRowsByContext();
   const rows=getFilteredAdminReportRows();
-  $("adminReportTable").innerHTML=rows.length?`<div class="table-wrap"><table><thead><tr><th>Date/Time</th><th>Unit</th><th>Reporter</th><th>Type</th><th>Patient/Count</th><th>Status</th><th>Details</th></tr></thead><tbody>${rows.slice().reverse().map(r=>`<tr><td>${esc(r.reportDate)}<br>${esc(r.reportTime)}</td><td>${esc(r.cemetery)}</td><td>${esc(r.reporter)}</td><td>${esc(r.type)}</td><td>${esc(r.patientId||"NO PATIENT")} / ${r.count}</td><td>${esc(r.status)}</td><td>${esc(r.details)}</td></tr>`).join("")}</tbody></table></div>`:'<div style="padding:25px;text-align:center;color:var(--muted);font-size:10px">No active patient-linked reports found.</div>';
+  const analytics=$("adminReportAnalytics");
+  if(analytics)analytics.innerHTML=renderAdminReportAnalytics(contextRows);
+  const table=$("adminReportTable");
+  if(table)table.innerHTML=rows.length?`<div class="table-wrap"><table><thead><tr><th>Date/Time<br><small style="font-weight:500;opacity:.8">Philippine Time (UTC+8)</small></th><th>Unit</th><th>Reporter</th><th>Type</th><th>Patient/Count</th><th>Status</th><th>Details</th></tr></thead><tbody>${rows.slice().reverse().map(r=>{const reportDateLabel=reportRecordDateForDisplay(r);const reportTimeLabel=reportRecordTimeForDisplay(r);return `<tr><td><strong>${esc(reportDateLabel||"—")}</strong><br><span style="font-size:9px;color:var(--muted)">${esc(reportTimeLabel?reportTimeLabel+" PHT":"Time unavailable")}</span></td><td>${esc(r.cemetery)}</td><td>${esc(r.reporter)}</td><td>${esc(r.type)}</td><td>${esc(r.patientId||"NO PATIENT")} / ${analyticsCount(r.count)}</td><td>${esc(r.status)}</td><td>${esc(r.details)}</td></tr>`}).join("")}</tbody></table></div>`:'<div style="padding:25px;text-align:center;color:var(--muted);font-size:10px">No reports match the selected filters.</div>';
+  const resultCount=$("adminReportResultCount");
+  if(resultCount)resultCount.textContent=`${analyticsCount(rows.length)} record${rows.length===1?"":"s"}`;
 }
 function exportAdminReportsCsv(){
   if(currentUser?.role!=="ADMIN") { alert("Only Admin can export All Reports."); return; }
@@ -3369,8 +3581,8 @@ function exportAdminReportsCsv(){
   if(!rows.length) { alert("No reports match the selected filters."); return; }
   const columns=[
     ["Report ID",r=>r.reportId],
-    ["Report Date",r=>r.reportDate],
-    ["Report Time",r=>r.reportTime],
+    ["Report Date (Philippine Time)",r=>reportRecordDateForDisplay(r)],
+    ["Report Time (PHT, UTC+8)",r=>{const t=reportRecordTimeForDisplay(r);return t?`${t} PHT`:""}],
     ["Unit",r=>r.cemetery],
     ["Team Leader",r=>r.teamLeader],
     ["Reporter",r=>r.reporter],
@@ -3383,7 +3595,6 @@ function exportAdminReportsCsv(){
   ];
   const csvCell=value=>{
     let text=String(value==null?"":value).replace(/\r\n/g,"\n").replace(/\r/g,"\n");
-    // Prevent spreadsheet formula execution from untrusted text fields.
     if(/^[\s]*[=+@]/.test(text) || /^[\s]*-\d/.test(text)) text="'"+text;
     return '"'+text.replace(/"/g,'""')+'"';
   };
@@ -3393,12 +3604,14 @@ function exportAdminReportsCsv(){
   const a=document.createElement("a");
   const unitFilter=$("reportUnitFilter")?.value||"All_Units";
   const typeFilter=$("reportTypeFilter")?.value||"All_Types";
+  const dateFrom=$("reportDateFrom")?.value||"Start";
+  const dateTo=$("reportDateTo")?.value||"End";
   const safePart=value=>String(value).replace(/[^a-z0-9_-]+/gi,"_").replace(/^_+|_+$/g,"").slice(0,50)||"All";
   a.href=url;
-  a.download=`OPLAN_KALULUWA_All_Reports_${safePart(unitFilter)}_${safePart(typeFilter)}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.download=`OPLAN_KALULUWA_All_Reports_${safePart(unitFilter)}_${safePart(typeFilter)}_${safePart(dateFrom)}_${safePart(dateTo)}_${new Date().toISOString().slice(0,10)}.csv`;
   document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
-  alert(`Export complete: ${rows.length} report(s).\n\nThe CSV includes all fields shown in the export columns. Current filters were applied.`);
+  alert(`Export complete: ${rows.length} report(s).\n\nThe current unit, date and report-type filters were applied.`);
 }
 
 /* =========================================================
