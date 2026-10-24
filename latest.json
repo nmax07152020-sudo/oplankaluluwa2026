@@ -1,6 +1,6 @@
 {
-    "version":  "1.0.6",
-    "url":  "https://github.com/nmax07152020-sudo/oplankaluluwa2026/releases/download/ota-v1.0.6/ota-v1.0.6.zip",
-    "checksum":  "7895609bae95d1c520d494f4067c911d1266dae88e20c1463e609f05144d62c8",
-    "notes":  "version 1.0.6"
+    "version":  "1.0.7",
+    "url":  "https://github.com/nmax07152020-sudo/oplankaluluwa2026/releases/download/ota-v1.0.7/ota-v1.0.7.zip",
+    "checksum":  "1b13f4826ff99f77692204119f44135756ded4f1c8f5e8ba154921315332c261",
+    "notes":  "delete footer version"
 }
