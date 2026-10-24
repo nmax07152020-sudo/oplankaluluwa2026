@@ -1,6 +1,6 @@
 {
-  "version": "1.0.4",
-  "url": "https://github.com/nmax07152020-sudo/oplankaluluwa2026/releases/download/ota-v1.0.4/ota-v1.0.4.zip",
-  "checksum": "934F986F1DA346B1CDA9A02B49FC6A997D468CE88AE43FEEB1916AEFB79B72A4",
-  "notes": "Oplan Kaluluwa OTA Test v1.0.4 - Footer Version Update"
+    "version":  "1.0.5",
+    "url":  "https://github.com/nmax07152020-sudo/oplankaluluwa2026/releases/download/ota-v1.0.5/ota-v1.0.5.zip",
+    "checksum":  "1E2AA06DE19767EC70838CA0CFC5028B2BC94F84BA8DAEDC46B4F6411D22C123",
+    "notes":  "version 1.0.5"
 }
