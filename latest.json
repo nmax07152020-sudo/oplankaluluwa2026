@@ -1,6 +1,6 @@
 {
-    "version":  "1.0.1",
-    "url":  "https://github.com/nmax07152020-sudo/oplankaluluwa2026/releases/download/ota-v1.0.1/ota-v1.0.1.zip",
-    "checksum":  "E2A72B868337339DE28442E4723DF510CDF9DAECDC53E59277C5174B7FFB2D2B",
-    "notes":  "Footer OTA test"
+    "version":  "1.0.2",
+    "url":  "https://github.com/nmax07152020-sudo/oplankaluluwa2026/releases/download/ota-v1.0.2/ota-v1.0.2.zip",
+    "checksum":  "46FC9B81183330EDB748289E3647F9C3457470CCD8B6FEFB89643512CBDDCE92",
+    "notes":  "Footer Version Fix"
 }
