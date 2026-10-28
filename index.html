@@ -505,6 +505,7 @@ button{cursor:pointer}
 @media(max-width:650px){.report-analytics-grid{grid-template-columns:1fr}.report-analytics-kpis{gap:8px}.report-analytics-stat{padding:11px}.report-analytics-stat strong{font-size:22px}.report-analytics-filter-title,.report-table-heading{align-items:flex-start}.report-analytics-filter-title{flex-direction:column}.report-analytics-filter-title .btn{align-self:flex-start}.report-bar-row{grid-template-columns:minmax(90px,1fr) minmax(65px,1.1fr) auto;gap:7px}.report-date-filter input{width:100%;min-width:0}.report-status-pill{min-width:125px}}
 </style>
 
+<meta name="oplan-build" content="V59 Fast Report Submission Candidate">
 </head>
 <body>
 
@@ -2771,9 +2772,27 @@ function bindReportForm(){
         renderReportPage();
         await setOfflineSyncStatus("pending","● OFFLINE — Report saved on this device and waiting to sync");
       }else{
-        await loadRoleData();
+        // Keep the form responsive after the server confirms the save.
+        // Summary + dashboard refresh continue in the background.
         renderReportPage();
-        await syncPendingReports();
+        // V59.1: run the summary rebuild and role-scoped data refresh concurrently.
+        // The save acknowledgement is already complete; this work must never block
+        // the next patient's report entry. Role data refresh remains authoritative.
+        void (async()=>{
+          const summaryTask=(async()=>{
+            try{await apiPost("refreshReportSummary",{},true)}
+            catch(summaryErr){console.warn("Report saved; summary refresh deferred to a later refresh.",summaryErr)}
+          })();
+          const recordsTask=(async()=>{
+            try{
+              await loadRoleData(true);
+              if(currentUser && currentPage==="report") renderReportPage();
+              else if(currentUser && currentPage==="patients") renderPatientRecordsPage();
+            }catch(refreshErr){console.warn("Report saved; records refresh deferred.",refreshErr)}
+          })();
+          await Promise.allSettled([summaryTask,recordsTask]);
+          try{await syncPendingReports()}catch(syncErr){console.warn("Pending report sync deferred.",syncErr)}
+        })();
       }
     }catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent="Submit Report to Google Sheets"}
   });
