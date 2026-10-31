@@ -1748,7 +1748,12 @@ async function refreshRoleDataSilently(){
   const sessionUser=currentUser, sessionToken=token, role=currentUser.role, mutationVersion=roleDataMutationVersion;
   try{
     if(role==="ADMIN"){
-      const fresh=await apiGet("adminData",{token:sessionToken});
+      // The Admin dashboard only needs KPI/unit summary data. Avoid downloading
+      // every patient and report row every 30 seconds while the dashboard is open.
+      const pageAtRequest=currentPage;
+      const fresh=pageAtRequest==="dashboard"
+        ? await apiGet("adminDashboardData",{token:sessionToken})
+        : await apiGet("adminData",{token:sessionToken});
       if(currentUser!==sessionUser || token!==sessionToken || mutationVersion!==roleDataMutationVersion) return;
       // Capture the currently visible page and filters after the request completes so navigation stays responsive.
       const page=currentPage;
@@ -1757,8 +1762,14 @@ async function refreshRoleDataSilently(){
       const savedReportUnit=$("reportUnitFilter")?.value||"";
       const savedReportType=$("reportTypeFilter")?.value||"";
       const savedAdminUnit=currentUnitData?.unit?.name||"";
-      adminData=fresh;adminFullDataLoaded=true;applyReportTypesFromData(adminData);populateUserUnitSelect();
-      await cacheRoleDataForOffline("ADMIN",adminData);
+      if(page==="dashboard" && fresh?._dashboardOnly){
+        adminData={...(adminData||{}),...fresh};
+        adminFullDataLoaded=false;
+      }else{
+        adminData=fresh;adminFullDataLoaded=true;
+        await cacheRoleDataForOffline("ADMIN",adminData);
+      }
+      applyReportTypesFromData(adminData);populateUserUnitSelect();
       cacheRefreshNoticeText="";if(page!=="inventory"&&page!=="attendance")setLocalCacheStatus("");
       if(page==="dashboard")renderAdminDashboard();
       else if(page==="patients"){
